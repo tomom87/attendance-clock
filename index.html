@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>勤怠打刻</title>
+  <script src="https://static.worksmobile.net/static/wm/woff/edge/3.6/sdk.js"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Hiragino Sans", sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f5f7fa;
+      color: #222;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .card {
+      background: #fff;
+      padding: 32px 24px;
+      border-radius: 16px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.08);
+      width: 88%;
+      max-width: 380px;
+      text-align: center;
+    }
+    .status { font-size: 18px; color: #666; margin: 0 0 16px; }
+    .result-label { font-size: 40px; font-weight: 700; margin: 16px 0 8px; }
+    .result-name { font-size: 20px; color: #333; margin: 0 0 8px; }
+    .result-time { font-size: 24px; color: #555; margin: 0 0 24px; }
+    .ok .result-label { color: #0a7f3b; }
+    .end .result-label { color: #1a5aa8; }
+    .error .result-label { color: #c23a2a; font-size: 24px; }
+    .note { font-size: 13px; color: #888; margin-top: 24px; line-height: 1.6; }
+    .spinner {
+      display: inline-block;
+      width: 32px;
+      height: 32px;
+      border: 4px solid #ddd;
+      border-top-color: #1a5aa8;
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+      margin: 16px 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="card" id="card">
+    <p class="status" id="status">認証中...</p>
+    <div class="spinner" id="spinner"></div>
+  </div>
+
+  <script>
+    const WOFF_ID = 'ydZQMa8CXf350TeFJOyVKg';
+    const GAS_URL = 'https://script.google.com/macros/s/AKfycbxrKnQGK86PZ5DX1KI95g3LHOzmpvi8vZ2rq5yOqZNE0CY__5bq_T8VAn74MrMdutPdtg/exec';
+
+    function showError(msg) {
+      const card = document.getElementById('card');
+      card.className = 'card error';
+      card.innerHTML = `
+        <p class="status">エラー</p>
+        <p class="result-label">${msg}</p>
+        <p class="note">この画面を閉じて、もう一度QRを読み取ってください。</p>
+      `;
+    }
+
+    function showResult(data) {
+      const card = document.getElementById('card');
+      const cls = data.label === '出勤' ? 'ok' : 'end';
+      card.className = 'card ' + cls;
+      card.innerHTML = `
+        <p class="status">打刻完了</p>
+        <p class="result-name">${data.name || ''}さん</p>
+        <p class="result-label">${data.label}</p>
+        <p class="result-time">${data.time}</p>
+        <p class="note">この画面を閉じてOKです。<br>リロードしないでください。</p>
+      `;
+    }
+
+    async function main() {
+      try {
+        await woff.init({woffId: WOFF_ID});
+
+        if (!woff.isLoggedIn()) {
+          woff.login({redirectUri: window.location.href});
+          return;
+        }
+
+        const profile = await woff.getProfile();
+
+        document.getElementById('status').textContent = '打刻中...';
+
+        const res = await fetch(GAS_URL, {
+          method: 'POST',
+          headers: {'Content-Type': 'text/plain;charset=utf-8'},
+          body: JSON.stringify({
+            action: 'attendance',
+            userId: profile.userId,
+            displayName: profile.displayName
+          })
+        });
+        const data = await res.json();
+
+        if (data.ok) {
+          showResult(data);
+        } else {
+          showError(data.message || data.error || '打刻に失敗しました');
+        }
+      } catch (err) {
+        showError('エラー: ' + (err.message || err));
+      }
+    }
+
+    window.addEventListener('load', main);
+  </script>
+</body>
+</html>
