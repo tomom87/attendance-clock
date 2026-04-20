@@ -19,30 +19,57 @@
     }
     .card {
       background: #fff;
-      padding: 32px 24px;
+      padding: 28px 22px;
       border-radius: 16px;
       box-shadow: 0 8px 32px rgba(0,0,0,0.08);
       width: 88%;
       max-width: 380px;
       text-align: center;
     }
-    .status { font-size: 18px; color: #666; margin: 0 0 16px; }
-    .result-label { font-size: 40px; font-weight: 700; margin: 16px 0 8px; }
-    .result-name { font-size: 20px; color: #333; margin: 0 0 8px; }
-    .result-time { font-size: 24px; color: #555; margin: 0 0 24px; }
+    .status { font-size: 16px; color: #666; margin: 0 0 12px; }
+    .name { font-size: 20px; color: #222; margin: 0 0 6px; font-weight: 600; }
+    .last { font-size: 14px; color: #888; margin: 0 0 18px; }
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 18px 16px;
+      margin: 10px 0;
+      font-size: 20px;
+      font-weight: 600;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      color: #fff;
+      transition: opacity 0.15s;
+    }
+    .btn:active { opacity: 0.7; }
+    .btn:disabled { opacity: 0.5; cursor: default; }
+    .btn-in { background: #0a7f3b; }
+    .btn-break-start { background: #c98500; }
+    .btn-break-end { background: #0a8fa0; }
+    .btn-out { background: #1a5aa8; }
+    .result-label { font-size: 40px; font-weight: 700; margin: 12px 0 6px; }
+    .result-time { font-size: 26px; color: #555; margin: 0 0 18px; }
     .ok .result-label { color: #0a7f3b; }
     .end .result-label { color: #1a5aa8; }
+    .break-s .result-label { color: #c98500; }
+    .break-e .result-label { color: #0a8fa0; }
     .error .result-label { color: #c23a2a; font-size: 24px; }
-    .note { font-size: 13px; color: #888; margin-top: 24px; line-height: 1.6; }
+    .note { font-size: 12px; color: #888; margin-top: 18px; line-height: 1.6; }
     .spinner {
       display: inline-block;
-      width: 32px;
-      height: 32px;
-      border: 4px solid #ddd;
+      width: 28px;
+      height: 28px;
+      border: 3px solid #ddd;
       border-top-color: #1a5aa8;
       border-radius: 50%;
       animation: spin 0.9s linear infinite;
-      margin: 16px 0;
+      margin: 14px 0;
+    }
+    .gps-status {
+      font-size: 11px;
+      color: #aaa;
+      margin-top: 8px;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
   </style>
@@ -56,6 +83,40 @@
   <script>
     const WOFF_ID = 'ydZQMa8CXf350TeFJOyVKg';
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbxrKnQGK86PZ5DX1KI95g3LHOzmpvi8vZ2rq5yOqZNE0CY__5bq_T8VAn74MrMdutPdtg/exec';
+    const GPS_TIMEOUT_MS = 5000;
+
+    let currentProfile = null;
+
+    function getLocation() {
+      return new Promise(resolve => {
+        if (!navigator.geolocation) return resolve(null);
+        const timer = setTimeout(() => resolve(null), GPS_TIMEOUT_MS);
+        navigator.geolocation.getCurrentPosition(
+          pos => {
+            clearTimeout(timer);
+            resolve({
+              lat: pos.coords.latitude,
+              lng: pos.coords.longitude,
+              acc: pos.coords.accuracy
+            });
+          },
+          () => {
+            clearTimeout(timer);
+            resolve(null);
+          },
+          {enableHighAccuracy: false, timeout: GPS_TIMEOUT_MS, maximumAge: 60000}
+        );
+      });
+    }
+
+    async function postJson(body) {
+      const res = await fetch(GAS_URL, {
+        method: 'POST',
+        headers: {'Content-Type': 'text/plain;charset=utf-8'},
+        body: JSON.stringify(body)
+      });
+      return await res.json();
+    }
 
     function showError(msg) {
       const card = document.getElementById('card');
@@ -69,15 +130,91 @@
 
     function showResult(data) {
       const card = document.getElementById('card');
-      const cls = data.label === '出勤' ? 'ok' : 'end';
+      let cls = 'ok';
+      if (data.label === '退勤') cls = 'end';
+      else if (data.label === '休憩開始') cls = 'break-s';
+      else if (data.label === '休憩終了') cls = 'break-e';
       card.className = 'card ' + cls;
       card.innerHTML = `
         <p class="status">打刻完了</p>
-        <p class="result-name">${data.name || ''}さん</p>
+        <p class="name">${data.name || ''}さん</p>
         <p class="result-label">${data.label}</p>
         <p class="result-time">${data.time}</p>
         <p class="note">この画面を閉じてOKです。<br>リロードしないでください。</p>
       `;
+    }
+
+    function showChoices(status) {
+      const card = document.getElementById('card');
+      const allowed = status.allowed || [];
+      const lastInfo = status.last
+        ? `直前の打刻: ${status.last.label}（${status.last.time}）`
+        : '本日未打刻';
+
+      if (allowed.length === 0) {
+        card.className = 'card end';
+        card.innerHTML = `
+          <p class="status">本日の打刻</p>
+          <p class="name">${currentProfile.displayName}さん</p>
+          <p class="result-label">完了</p>
+          <p class="last">${lastInfo}</p>
+          <p class="note">お疲れさまでした。</p>
+        `;
+        return;
+      }
+
+      const buttonClass = {
+        '出勤': 'btn-in',
+        '休憩開始': 'btn-break-start',
+        '休憩終了': 'btn-break-end',
+        '退勤': 'btn-out'
+      };
+
+      const buttons = allowed.map(label =>
+        `<button class="btn ${buttonClass[label]}" data-label="${label}">${label}</button>`
+      ).join('');
+
+      card.className = 'card';
+      card.innerHTML = `
+        <p class="name">${currentProfile.displayName}さん</p>
+        <p class="last">${lastInfo}</p>
+        ${buttons}
+        <p class="gps-status" id="gps-status"></p>
+      `;
+
+      card.querySelectorAll('.btn').forEach(btn => {
+        btn.addEventListener('click', () => handlePunch(btn.dataset.label, btn));
+      });
+    }
+
+    async function handlePunch(label, btn) {
+      const card = document.getElementById('card');
+      card.querySelectorAll('.btn').forEach(b => b.disabled = true);
+      const gpsStatus = document.getElementById('gps-status');
+      if (gpsStatus) gpsStatus.textContent = '位置情報取得中...';
+
+      const loc = await getLocation();
+      if (gpsStatus) gpsStatus.textContent = loc ? '位置情報OK' : '位置情報なし';
+
+      try {
+        const data = await postJson({
+          action: 'punch',
+          userId: currentProfile.userId,
+          displayName: currentProfile.displayName,
+          label,
+          lat: loc ? loc.lat : null,
+          lng: loc ? loc.lng : null,
+          acc: loc ? loc.acc : null,
+          ua: 'woff'
+        });
+        if (data.ok) {
+          showResult(data);
+        } else {
+          showError(data.message || data.error || '打刻に失敗しました');
+        }
+      } catch (err) {
+        showError('通信エラー: ' + (err.message || err));
+      }
     }
 
     async function main() {
@@ -89,26 +226,20 @@
           return;
         }
 
-        const profile = await woff.getProfile();
+        currentProfile = await woff.getProfile();
+        document.getElementById('status').textContent = '状態確認中...';
 
-        document.getElementById('status').textContent = '打刻中...';
-
-        const res = await fetch(GAS_URL, {
-          method: 'POST',
-          headers: {'Content-Type': 'text/plain;charset=utf-8'},
-          body: JSON.stringify({
-            action: 'attendance',
-            userId: profile.userId,
-            displayName: profile.displayName
-          })
+        const status = await postJson({
+          action: 'status',
+          userId: currentProfile.userId
         });
-        const data = await res.json();
 
-        if (data.ok) {
-          showResult(data);
-        } else {
-          showError(data.message || data.error || '打刻に失敗しました');
+        if (!status.ok) {
+          showError(status.error || '状態取得失敗');
+          return;
         }
+
+        showChoices(status);
       } catch (err) {
         showError('エラー: ' + (err.message || err));
       }
