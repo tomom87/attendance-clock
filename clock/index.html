@@ -49,6 +49,13 @@
   .spinner { width: 36px; height: 36px; border: 4px solid var(--line); border-top-color: var(--accent); border-radius: 50%; margin: 24px auto; animation: sp 0.9s linear infinite; }
   @keyframes sp { to { transform: rotate(360deg); } }
   .hidden { display: none; }
+  .addlink { margin-top: 16px; }
+  .textin { display: block; width: 100%; font-size: 22px; padding: 12px; border: 2px solid var(--line); border-radius: 12px; margin: 6px 0 4px; font-family: inherit; }
+  .hint { font-size: 13px; color: var(--sub); margin: 0 0 14px; line-height: 1.6; }
+  .roles { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin: 6px 0 16px; }
+  .roles button { background: #fff; border: 2px solid var(--line); font-size: 17px; font-weight: 600; padding: 12px 4px; }
+  .roles button.on { border-color: var(--accent); background: #eef4e3; }
+  .lbl { font-size: 14px; font-weight: 700; margin: 10px 0 0; }
 </style>
 </head>
 <body>
@@ -157,11 +164,48 @@
         '<p class="sub">この端末で打刻するのは初めてです。<br>ご自分の名前を選んでください。</p>' +
         '<div class="names">' + r.staff.map(function (s, i) {
           return '<button data-i="' + i + '">' + esc(s.name) + '</button>';
-        }).join('') + '</div>';
+        }).join('') + '</div>' +
+        '<button class="alt addlink" id="addMe">一覧に自分の名前がないとき</button>';
       Array.prototype.forEach.call(card.querySelectorAll('.names button'), function (b) {
         b.onclick = function () { pinScreen(r.staff[Number(b.dataset.i)]); };
       });
+      document.getElementById('addMe').onclick = function () { addScreen(); };
     }).catch(function () { netError(loadRoster); });
+  }
+
+  // ---------- 登録: 一覧に名前がないとき（自分で追加） ----------
+  function addScreen(prev) {
+    prev = prev || {};
+    var role = prev.role || '';
+    card.innerHTML = '<h1>名前を追加</h1>' +
+      '<p class="sub">一覧に名前がない場合は、ここで追加できます。</p>' +
+      '<p class="lbl">氏名（フルネーム）</p>' +
+      '<input type="text" class="textin" id="nm" autocomplete="name" placeholder="例：山田花子" value="' + esc(prev.name || '') + '">' +
+      '<p class="hint">姓と名の間にスペースは不要です（入れても自動で詰めます）。</p>' +
+      '<p class="lbl">職種</p>' +
+      '<div class="roles">' + ['事務', '看護師', 'その他'].map(function (x) {
+        return '<button data-r="' + x + '"' + (x === role ? ' class="on"' : '') + '>' + x + '</button>';
+      }).join('') + '</div>' +
+      '<div id="addErr"></div>' +
+      '<button class="main c-出勤" id="addNext">次へ</button>' +
+      '<button class="link" id="addBack">戻る</button>';
+    Array.prototype.forEach.call(card.querySelectorAll('.roles button'), function (b) {
+      b.onclick = function () {
+        role = b.dataset.r;
+        document.getElementById('addErr').innerHTML = '';
+        Array.prototype.forEach.call(card.querySelectorAll('.roles button'), function (x) { x.className = x === b ? 'on' : ''; });
+      };
+    });
+    document.getElementById('addBack').onclick = function () { loadRoster(); };
+    document.getElementById('addNext').onclick = function () {
+      var nm = document.getElementById('nm').value.replace(/[\s\u3000]+/g, '');
+      var err = '';
+      if (nm.length < 2 || nm.length > 20) err = '氏名を2〜20文字で入れてください。';
+      else if (/[0-9０-９]/.test(nm)) err = '氏名に数字は使えません。';
+      else if (!role) err = '職種を選んでください。';
+      if (err) { document.getElementById('addErr').innerHTML = '<div class="error">' + esc(err) + '</div>'; return; }
+      pinScreen({ name: nm, pinSet: false, isNew: true, role: role });
+    };
   }
 
   // ---------- 登録: PIN ----------
@@ -182,7 +226,7 @@
     function paint() { for (var i = 0; i < 4; i++) boxes[i].textContent = i < digits.length ? '●' : ''; }
     Array.prototype.forEach.call(card.querySelectorAll('.pad button'), function (b) {
       b.onclick = function () {
-        if (b.dataset.f === 'back') return loadRoster();
+        if (b.dataset.f === 'back') return staff.isNew ? addScreen(staff) : loadRoster();
         if (b.dataset.f === 'del') { digits = digits.slice(0, -1); return paint(); }
         if (digits.length >= 4) return;
         digits += b.dataset.n; paint();
@@ -202,7 +246,9 @@
 
   function register(staff, pinBody) {
     loading('登録中…');
-    var body = { action: 'register', name: staff.name };
+    var body = staff.isNew
+      ? { action: 'register', newName: staff.name, role: staff.role }
+      : { action: 'register', name: staff.name };
     if (pinBody.pin) body.pin = pinBody.pin;
     if (pinBody.newPin) body.newPin = pinBody.newPin;
     api(body).then(function (r) {
@@ -210,6 +256,11 @@
         if (r.error === 'bad_pin') {
           pinScreen(staff, 'enter');
           card.insertAdjacentHTML('afterbegin', '<div class="error">' + esc(r.message) + '</div>');
+          return;
+        }
+        if (staff.isNew && (r.error === 'bad_name')) {
+          addScreen(staff);
+          document.getElementById('addErr').innerHTML = '<div class="error">' + esc(r.message) + '</div>';
           return;
         }
         return showError(r.message || r.error, loadRoster);
