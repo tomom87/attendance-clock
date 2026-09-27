@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>勤怠打刻</title>
+<style>
+  :root {
+    --bg: #f4f6f3; --card: #fff; --ink: #1f2a1c; --sub: #5b6657; --line: #d9e0d5;
+    --in: #0a7f3b; --bs: #b86f00; --be: #0a7f8f; --out: #1a5aa8; --err: #c23a2a; --accent: #5d7828;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", "Yu Gothic", sans-serif; }
+  body { min-height: 100vh; display: flex; justify-content: center; padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); }
+  .wrap { width: 100%; max-width: 440px; }
+  .brand { font-size: 13px; color: var(--sub); text-align: center; margin: 4px 0 12px; }
+  .card { background: var(--card); border-radius: 18px; padding: 22px 18px; box-shadow: 0 2px 10px rgba(0,0,0,.06); }
+  h1 { font-size: 22px; margin: 0 0 4px; text-align: center; }
+  .sub { color: var(--sub); font-size: 14px; text-align: center; margin: 0 0 16px; line-height: 1.6; }
+  .clock { font-size: 44px; font-weight: 700; text-align: center; letter-spacing: 1px; margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
+  .date { text-align: center; color: var(--sub); font-size: 14px; margin-bottom: 14px; }
+  .last { text-align: center; font-size: 14px; color: var(--sub); margin: 0 0 16px; }
+  button { font: inherit; cursor: pointer; border: 0; border-radius: 14px; width: 100%; }
+  button:disabled { opacity: .5; cursor: default; }
+  .main { color: #fff; font-size: 30px; font-weight: 700; padding: 26px 10px; margin-bottom: 12px; }
+  .alt { background: #fff; border: 2px solid var(--line); color: var(--ink); font-size: 18px; font-weight: 600; padding: 14px 10px; margin-bottom: 10px; }
+  .c-出勤 { background: var(--in); } .c-休憩開始 { background: var(--bs); } .c-休憩終了 { background: var(--be); } .c-退勤 { background: var(--out); }
+  .t-出勤 { color: var(--in); } .t-休憩開始 { color: var(--bs); } .t-休憩終了 { color: var(--be); } .t-退勤 { color: var(--out); }
+  .altlabel { font-size: 13px; color: var(--sub); margin: 6px 0 8px; text-align: center; }
+  .link { background: none; color: var(--sub); text-decoration: underline; font-size: 14px; padding: 12px; }
+  .names { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .names button { background: #fff; border: 2px solid var(--line); font-size: 18px; font-weight: 600; padding: 16px 6px; }
+  .pinbox { display: flex; justify-content: center; gap: 10px; margin: 8px 0 16px; }
+  .pinbox span { width: 44px; height: 54px; border: 2px solid var(--line); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 28px; }
+  .pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .pad button { background: #eef2ec; font-size: 26px; font-weight: 600; padding: 14px 0; }
+  .pad .fn { background: transparent; font-size: 16px; color: var(--sub); }
+  .result { text-align: center; }
+  .result .big { font-size: 46px; font-weight: 800; margin: 8px 0 4px; }
+  .result .time { font-size: 22px; margin-bottom: 10px; }
+  .note { font-size: 14px; color: var(--sub); text-align: center; line-height: 1.6; margin: 10px 0 0; }
+  .warn { background: #fff6e6; border: 1px solid #f1d39a; color: #7a4b00; border-radius: 10px; padding: 10px 12px; font-size: 14px; margin: 10px 0; line-height: 1.6; }
+  .error { background: #fdecea; border: 1px solid #f3b8b0; color: var(--err); border-radius: 10px; padding: 12px; font-size: 15px; margin: 10px 0; line-height: 1.6; }
+  .cancel { background: #fff; border: 2px solid var(--err); color: var(--err); font-size: 17px; font-weight: 700; padding: 12px; margin-top: 14px; }
+  .timein { display: block; width: 100%; font-size: 26px; padding: 10px; border: 2px solid var(--line); border-radius: 12px; margin: 8px 0 14px; text-align: center; }
+  .spinner { width: 36px; height: 36px; border: 4px solid var(--line); border-top-color: var(--accent); border-radius: 50%; margin: 24px auto; animation: sp 0.9s linear infinite; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="brand">西新井内科クリニック 勤怠打刻</p>
+  <div class="card" id="card"><div class="spinner"></div><p class="note">読み込み中…</p></div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var GAS_URL = 'https://script.google.com/macros/s/AKfycbxrKnQGK86PZ5DX1KI95g3LHOzmpvi8vZ2rq5yOqZNE0CY__5bq_T8VAn74MrMdutPdtg/exec';
+  var STORE_KEY = 'nishiarai.clock.v1';
+  var GPS_TIMEOUT_MS = 8000;
+
+  var card = document.getElementById('card');
+  var store = loadStore();
+  var siteKey = new URLSearchParams(location.search).get('k') || store.k || '';
+  var status = null;
+  var geoPromise = null;
+  var clockTimer = null, cancelTimer = null;
+
+  // ---------- 保存（端末ごと） ----------
+  function loadStore() {
+    try { return JSON.parse(localStorage.getItem(STORE_KEY) || '{}') || {}; } catch (e) { return {}; }
+  }
+  function saveStore() {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); return true; } catch (e) { return false; }
+  }
+
+  // ---------- 通信 ----------
+  function api(body) {
+    body.k = siteKey;
+    return fetch(GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(body)
+    }).then(function (r) { return r.json(); });
+  }
+
+  // ---------- 位置情報（画面を開いた時点で取り始める） ----------
+  function startGeo() {
+    geoPromise = new Promise(function (resolve) {
+      if (!navigator.geolocation) return resolve({ err: 'unsupported' });
+      var done = false;
+      var timer = setTimeout(function () { if (!done) { done = true; resolve({ err: 'timeout' }); } }, GPS_TIMEOUT_MS);
+      navigator.geolocation.getCurrentPosition(function (p) {
+        if (done) return; done = true; clearTimeout(timer);
+        resolve({ lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy });
+      }, function (e) {
+        if (done) return; done = true; clearTimeout(timer);
+        resolve({ err: e && e.code === 1 ? 'denied' : (e && e.code === 3 ? 'timeout' : 'unavailable') });
+      }, { enableHighAccuracy: true, timeout: GPS_TIMEOUT_MS, maximumAge: 30000 });
+    });
+  }
+
+  // ---------- 表示の部品 ----------
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function clearTimers() {
+    if (clockTimer) { clearInterval(clockTimer); clockTimer = null; }
+    if (cancelTimer) { clearInterval(cancelTimer); cancelTimer = null; }
+  }
+  function loading(msg) {
+    clearTimers();
+    card.innerHTML = '<div class="spinner"></div><p class="note">' + esc(msg || '通信中…') + '</p>';
+  }
+  function showError(msg, retry) {
+    clearTimers();
+    card.innerHTML = '<h1>うまくいきませんでした</h1><div class="error">' + esc(msg) + '</div>' +
+      (retry ? '<button class="alt" id="retry">もう一度</button>' : '') +
+      '<p class="note">直らないときは院長に伝えてください。</p>';
+    if (retry) document.getElementById('retry').onclick = retry;
+  }
+  function netError(retry) {
+    showError('通信できませんでした。電波を確認して、もう一度押してください。（打刻は記録されていません）', retry);
+  }
+  function hhmm() {
+    var d = new Date();
+    return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+  }
+
+  // ---------- 起動 ----------
+  function start() {
+    if (!siteKey) {
+      card.innerHTML = '<h1>QRコードから開いてください</h1><p class="sub">休憩室に貼ってあるQRコードを、スマホの<b>カメラアプリ</b>で読み取ってください。</p>';
+      return;
+    }
+    if (store.k !== siteKey) { store.k = siteKey; saveStore(); }
+    // アドレスバーから合言葉を消す（画面の写真などで広がらないように）
+    try { history.replaceState(null, '', location.pathname); } catch (e) {}
+    startGeo();
+    if (store.token) loadStatus(); else loadRoster();
+  }
+
+  // ---------- 登録: 氏名を選ぶ ----------
+  function loadRoster() {
+    loading('名簿を読み込み中…');
+    api({ action: 'roster' }).then(function (r) {
+      if (!r.ok) return showError(r.message || r.error, loadRoster);
+      card.innerHTML = '<h1>はじめに登録します</h1>' +
+        '<p class="sub">この端末で打刻するのは初めてです。<br>ご自分の名前を選んでください。</p>' +
+        '<div class="names">' + r.staff.map(function (s, i) {
+          return '<button data-i="' + i + '">' + esc(s.name) + '</button>';
+        }).join('') + '</div>';
+      Array.prototype.forEach.call(card.querySelectorAll('.names button'), function (b) {
+        b.onclick = function () { pinScreen(r.staff[Number(b.dataset.i)]); };
+      });
+    }).catch(function () { netError(loadRoster); });
+  }
+
+  // ---------- 登録: PIN ----------
+  function pinScreen(staff, stage, first) {
+    stage = stage || (staff.pinSet ? 'enter' : 'new1');
+    var digits = '';
+    var title = stage === 'enter' ? 'PINを入力' : (stage === 'new1' ? 'PINを決めてください' : 'もう一度入力');
+    var sub = stage === 'enter'
+      ? esc(staff.name) + 'さんのPIN（数字4桁）を入れてください。<br>忘れた場合は院長に伝えてください。'
+      : (stage === 'new1'
+        ? esc(staff.name) + 'さん用のPIN（数字4桁）を決めます。<br>別の端末で登録するときに使います。他の人に教えないでください。'
+        : '確認のため、同じPINをもう一度入れてください。');
+    card.innerHTML = '<h1>' + title + '</h1><p class="sub">' + sub + '</p>' +
+      '<div class="pinbox"><span></span><span></span><span></span><span></span></div>' +
+      '<div class="pad">' + [1, 2, 3, 4, 5, 6, 7, 8, 9].map(function (n) { return '<button data-n="' + n + '">' + n + '</button>'; }).join('') +
+      '<button class="fn" data-f="back">戻る</button><button data-n="0">0</button><button class="fn" data-f="del">消す</button></div>';
+    var boxes = card.querySelectorAll('.pinbox span');
+    function paint() { for (var i = 0; i < 4; i++) boxes[i].textContent = i < digits.length ? '●' : ''; }
+    Array.prototype.forEach.call(card.querySelectorAll('.pad button'), function (b) {
+      b.onclick = function () {
+        if (b.dataset.f === 'back') return loadRoster();
+        if (b.dataset.f === 'del') { digits = digits.slice(0, -1); return paint(); }
+        if (digits.length >= 4) return;
+        digits += b.dataset.n; paint();
+        if (digits.length === 4) setTimeout(function () { done(digits); }, 150);
+      };
+    });
+    function done(pin) {
+      if (stage === 'new1') return pinScreen(staff, 'new2', pin);
+      if (stage === 'new2' && pin !== first) {
+        pinScreen(staff, 'new1');
+        card.insertAdjacentHTML('afterbegin', '<div class="error">1回目と2回目が違いました。もう一度決めてください。</div>');
+        return;
+      }
+      register(staff, stage === 'enter' ? { pin: pin } : { newPin: pin });
+    }
+  }
+
+  function register(staff, pinBody) {
+    loading('登録中…');
+    var body = { action: 'register', name: staff.name };
+    if (pinBody.pin) body.pin = pinBody.pin;
+    if (pinBody.newPin) body.newPin = pinBody.newPin;
+    api(body).then(function (r) {
+      if (!r.ok) {
+        if (r.error === 'bad_pin') {
+          pinScreen(staff, 'enter');
+          card.insertAdjacentHTML('afterbegin', '<div class="error">' + esc(r.message) + '</div>');
+          return;
+        }
+        return showError(r.message || r.error, loadRoster);
+      }
+      store.token = r.token; store.name = r.name;
+      var kept = saveStore();
+      if (!kept) {
+        showError('この端末では登録を覚えておけません（プライベートブラウズなど）。普段のブラウザで開き直してください。', null);
+        return;
+      }
+      loadStatus();
+    }).catch(function () { netError(function () { register(staff, pinBody); }); });
+  }
+
+  // ---------- 打刻画面 ----------
+  function loadStatus() {
+    loading(store.name ? store.name + 'さんの状態を確認中…' : '確認中…');
+    api({ action: 'status', token: store.token }).then(function (r) {
+      if (!r.ok) return tokenProblem(r);
+      status = r; renderStatus();
+    }).catch(function () { netError(loadStatus); });
+  }
+
+  function tokenProblem(r) {
+    if (r.error === 'invalid_token') {
+      delete store.token; delete store.name; saveStore();
+      loadRoster();
+      return;
+    }
+    showError(r.message || r.error, loadStatus);
+  }
+
+  function renderStatus(extra) {
+    clearTimers();
+    var s = status;
+    var h = '<h1>' + esc(s.name) + 'さん</h1>' +
+      '<div class="clock" id="now">' + hhmm() + '</div><div class="date">' + esc(s.date) + '</div>';
+    if (extra) h += extra;
+
+    if (!s.allowed.length) {
+      h += '<p class="last">本日の打刻は完了しています' + (s.last ? '（' + esc(s.last.label) + ' ' + esc(s.last.time) + '）' : '') + '</p>';
+    } else {
+      h += '<p class="last">' + (s.last ? '直前の打刻：' + esc(s.last.label) + '（' + esc(s.last.time) + '）' : '本日はまだ打刻していません') + '</p>';
+      var def = s.def && s.allowed.indexOf(s.def) >= 0 ? s.def : s.allowed[0];
+      h += '<button class="main c-' + def + '" data-l="' + def + '">' + def + '</button>';
+      var others = s.allowed.filter(function (l) { return l !== def; });
+      if (others.length) {
+        h += '<p class="altlabel">ちがう操作のときは</p>' + others.map(function (l) {
+          return '<button class="alt" data-l="' + l + '">' + l + '</button>';
+        }).join('');
+      }
+    }
+    h += cancelHtml(s.cancellable);
+    h += '<button class="link" id="notme">' + esc(s.name) + 'さんではありませんか？</button>';
+    card.innerHTML = h;
+
+    Array.prototype.forEach.call(card.querySelectorAll('button[data-l]'), function (b) {
+      b.onclick = function () { choose(b.dataset.l); };
+    });
+    document.getElementById('notme').onclick = notMe;
+    bindCancel(s.cancellable);
+    clockTimer = setInterval(function () { var n = document.getElementById('now'); if (n) n.textContent = hhmm(); }, 5000);
+  }
+
+  function cancelHtml(c) {
+    if (!c) return '';
+    return '<button class="cancel" id="cancelBtn">' + esc(c.label) + '（' + esc(c.time) + '）を取り消す <span id="cRemain"></span></button>';
+  }
+  function bindCancel(c) {
+    var btn = document.getElementById('cancelBtn');
+    if (!btn || !c) return;
+    var until = Date.now() + c.remainSec * 1000;
+    function tick() {
+      var sec = Math.floor((until - Date.now()) / 1000);
+      var sp = document.getElementById('cRemain');
+      if (sec <= 0) { btn.remove(); if (cancelTimer) { clearInterval(cancelTimer); cancelTimer = null; } return; }
+      if (sp) sp.textContent = '（あと' + Math.floor(sec / 60) + ':' + ('0' + (sec % 60)).slice(-2) + '）';
+    }
+    tick();
+    cancelTimer = setInterval(tick, 1000);
+    btn.onclick = doCancel;
+  }
+
+  function choose(label) {
+    if (status.state === 'break' && label === '退勤') return breakEndScreen();
+    punch(label, null);
+  }
+
+  // ---------- 休憩中の退勤 ----------
+  function breakEndScreen() {
+    clearTimers();
+    card.innerHTML = '<h1>休憩終了が押されていません</h1>' +
+      '<p class="sub">休憩開始（' + esc(status.breakStart || '') + '）のあと、休憩終了が記録されていません。<br>休憩から戻った時刻を入れてください。</p>' +
+      '<input type="time" class="timein" id="be" step="60">' +
+      '<button class="main c-退勤" id="withBe">休憩終了を入れて退勤</button>' +
+      '<button class="alt" id="noBe">休憩終了なしで退勤</button>' +
+      '<button class="link" id="back">戻る</button>';
+    document.getElementById('withBe').onclick = function () {
+      var v = document.getElementById('be').value;
+      if (!/^\d{1,2}:\d{2}$/.test(v)) { alert('休憩から戻った時刻を入れてください。'); return; }
+      punch('退勤', v);
+    };
+    document.getElementById('noBe').onclick = function () { punch('退勤', null); };
+    document.getElementById('back').onclick = function () { renderStatus(); };
+  }
+
+  function punch(label, breakEnd) {
+    loading('位置情報を確認中…');
+    var ua = navigator.userAgent.slice(0, 120);
+    geoPromise.then(function (g) {
+      loading(label + 'を記録中…');
+      var body = { action: 'punch', token: store.token, label: label, ua: ua };
+      if (g && typeof g.lat === 'number') { body.lat = g.lat; body.lng = g.lng; body.acc = g.acc; }
+      else body.geoErr = (g && g.err) || 'none';
+      if (breakEnd) body.breakEnd = breakEnd;
+      return api(body);
+    }).then(function (r) {
+      if (!r.ok) {
+        if (r.error === 'invalid_token') return tokenProblem(r);
+        return showError(r.message || r.error, loadStatus);
+      }
+      status = r;
+      showResult(r);
+      startGeo();   // 次の打刻（取消→打ち直し）に備える
+    }).catch(function () { netError(function () { punch(label, breakEnd); }); });
+  }
+
+  function showResult(r) {
+    clearTimers();
+    var h = '<div class="result"><p class="sub">' + esc(r.name) + 'さん</p>' +
+      '<div class="big t-' + esc(r.label) + '">' + esc(r.label) + '</div>' +
+      '<div class="time">' + esc(r.time) + ' に記録しました</div></div>';
+    (r.warn || []).forEach(function (w) { h += '<div class="warn">' + esc(w) + '</div>'; });
+    h += cancelHtml(r.cancellable);
+    h += '<p class="note">この画面は閉じてかまいません。</p>';
+    card.innerHTML = h;
+    bindCancel(r.cancellable);
+  }
+
+  function doCancel() {
+    var c = status && status.cancellable;
+    if (!c) return;
+    if (!confirm(c.label + '（' + c.time + '）を取り消しますか？')) return;
+    loading('取り消し中…');
+    api({ action: 'cancel', token: store.token }).then(function (r) {
+      if (!r.ok) {
+        if (r.error === 'invalid_token') return tokenProblem(r);
+        return showError(r.message || r.error, loadStatus);
+      }
+      status = r;
+      renderStatus('<div class="warn">' + esc(r.cancelled.label) + '（' + esc(r.cancelled.time) + '）を取り消しました。正しい操作を押してください。</div>');
+    }).catch(function () { netError(loadStatus); });
+  }
+
+  function notMe() {
+    if (!confirm('この端末の登録（' + (store.name || '') + 'さん）を解除して、名前を選び直しますか？')) return;
+    var t = store.token;
+    delete store.token; delete store.name; saveStore();
+    api({ action: 'forget', token: t }).catch(function () {});
+    loadRoster();
+  }
+
+  // 画面に戻ってきたとき（別アプリから戻る等）は状態を取り直す
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible' && store.token && status && document.getElementById('now')) loadStatus();
+  });
+
+  start();
+})();
+</script>
+</body>
+</html>
