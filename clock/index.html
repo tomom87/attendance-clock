@@ -33,6 +33,11 @@
   .link { background: none; color: var(--sub); text-decoration: underline; font-size: 14px; padding: 12px; }
   .names { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .names button { background: #fff; border: 2px solid var(--line); font-size: 18px; font-weight: 600; padding: 16px 6px; }
+  .slow { font-size: 13px; min-height: 20px; }
+  .pinhead { text-align: center; }
+  .pinhead h1 { white-space: nowrap; }
+  .pinsub { height: 82px; margin: 0; overflow: hidden; font-size: 13px; line-height: 1.55; }
+  .pinmsg { height: 40px; margin: 4px 0 0; color: var(--err); font-size: 13px; font-weight: 700; line-height: 1.5; overflow: hidden; }
   .pinbox { display: flex; justify-content: center; gap: 10px; margin: 8px 0 16px; }
   .pinbox span { width: 44px; height: 54px; border: 2px solid var(--line); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 28px; }
   .pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
@@ -77,7 +82,7 @@
   var siteKey = new URLSearchParams(location.search).get('k') || store.k || '';
   var status = null;
   var geoPromise = null;
-  var clockTimer = null, cancelTimer = null;
+  var clockTimer = null, cancelTimer = null, slowTimer = null;
 
   // ---------- 保存（端末ごと） ----------
   function loadStore() {
@@ -122,10 +127,16 @@
   function clearTimers() {
     if (clockTimer) { clearInterval(clockTimer); clockTimer = null; }
     if (cancelTimer) { clearInterval(cancelTimer); cancelTimer = null; }
+    if (slowTimer) { clearTimeout(slowTimer); slowTimer = null; }
   }
   function loading(msg) {
     clearTimers();
-    card.innerHTML = '<div class="spinner"></div><p class="note">' + esc(msg || '通信中…') + '</p>';
+    card.innerHTML = '<div class="spinner"></div><p class="note">' + esc(msg || '通信中…') + '</p><p class="note slow" id="slow"></p>';
+    // 3秒を過ぎたら、止まっていないことを伝える（サーバーの起動待ちで10秒ほどかかることがある）
+    slowTimer = setTimeout(function () {
+      var el = document.getElementById('slow');
+      if (el) el.textContent = '初回は10秒ほどかかることがあります。このままお待ちください。';
+    }, 3000);
   }
   function showError(msg, retry) {
     clearTimers();
@@ -209,16 +220,18 @@
   }
 
   // ---------- 登録: PIN ----------
-  function pinScreen(staff, stage, first) {
+  function pinScreen(staff, stage, first, msg) {
     stage = stage || (staff.pinSet ? 'enter' : 'new1');
     var digits = '';
     var title = stage === 'enter' ? 'PINを入力' : (stage === 'new1' ? 'PINを決めてください' : 'もう一度入力');
     var sub = stage === 'enter'
-      ? esc(staff.name) + 'さんのPIN（数字4桁）を入れてください。<br>忘れた場合は院長に伝えてください。'
+      ? esc(staff.name) + 'さんのPIN（数字4桁）を入れてください。<br>忘れた場合は院長へ。'
       : (stage === 'new1'
-        ? esc(staff.name) + 'さん用のPIN（数字4桁）を決めます。<br>別の端末で登録するときに使います。他の人に教えないでください。'
-        : '確認のため、同じPINをもう一度入れてください。');
-    card.innerHTML = '<h1>' + title + '</h1><p class="sub">' + sub + '</p>' +
+        ? esc(staff.name) + 'さん用のPIN（数字4桁）を決めます。<br>別のスマホで登録し直すときに使います。'
+        : '確認のため、同じPINを<br>もう一度入れてください。');
+    // 見出し・説明・メッセージの高さを固定し、1回目と2回目でテンキーの位置が変わらないようにする
+    card.innerHTML = '<div class="pinhead"><h1>' + title + '</h1><p class="sub pinsub">' + sub + '</p>' +
+      '<p class="pinmsg">' + esc(msg || '') + '</p></div>' +
       '<div class="pinbox"><span></span><span></span><span></span><span></span></div>' +
       '<div class="pad">' + [1, 2, 3, 4, 5, 6, 7, 8, 9].map(function (n) { return '<button data-n="' + n + '">' + n + '</button>'; }).join('') +
       '<button class="fn" data-f="back">戻る</button><button data-n="0">0</button><button class="fn" data-f="del">消す</button></div>';
@@ -236,9 +249,7 @@
     function done(pin) {
       if (stage === 'new1') return pinScreen(staff, 'new2', pin);
       if (stage === 'new2' && pin !== first) {
-        pinScreen(staff, 'new1');
-        card.insertAdjacentHTML('afterbegin', '<div class="error">1回目と2回目が違いました。もう一度決めてください。</div>');
-        return;
+        return pinScreen(staff, 'new1', null, '1回目と2回目が違いました。もう一度決めてください。');
       }
       register(staff, stage === 'enter' ? { pin: pin } : { newPin: pin });
     }
@@ -253,11 +264,8 @@
     if (pinBody.newPin) body.newPin = pinBody.newPin;
     api(body).then(function (r) {
       if (!r.ok) {
-        if (r.error === 'bad_pin') {
-          pinScreen(staff, 'enter');
-          card.insertAdjacentHTML('afterbegin', '<div class="error">' + esc(r.message) + '</div>');
-          return;
-        }
+        if (r.error === 'bad_pin') return pinScreen(staff, 'enter', null, r.message);
+        if (r.error === 'pin_reset') { staff.pinSet = false; return pinScreen(staff, 'new1', null, r.message); }
         if (staff.isNew && (r.error === 'bad_name')) {
           addScreen(staff);
           document.getElementById('addErr').innerHTML = '<div class="error">' + esc(r.message) + '</div>';
