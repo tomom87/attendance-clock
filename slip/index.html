@@ -162,7 +162,7 @@
         }).join('') + '</div>';
       }
       if (r.houjin.length) {
-        h += '<div class="sec">業務報告書兼請求書（法人）</div><div class="list">' + r.houjin.map(function (x) {
+        h += '<div class="sec">業務報告書兼支払明細書（法人）</div><div class="list">' + r.houjin.map(function (x) {
           return '<button data-hym="' + esc(x.ym) + '"><span>' + esc(ymLabel(x.ym)) + '</span><span class="amt">' + esc(x.state) + '　' + yen(x.amount) + '</span></button>';
         }).join('') + '</div>';
       }
@@ -181,11 +181,31 @@
     req.token = store.token; req.pin = pin;
     call(req).then(function (r) {
       if (!r.ok) { if (!handleAuthError(r)) app.innerHTML = '<div class="card">' + err(r.message) + '<button class="ghost" id="back">戻る</button></div>'; bindBack(); return; }
-      app.innerHTML = '<div class="bar noprint"><button class="ghost" id="back">‹ 一覧</button><button class="ghost" id="print">印刷・PDFで保存</button></div>' +
+      app.innerHTML = '<div class="bar noprint"><button class="ghost" id="back">‹ 一覧</button><button class="ghost" id="dl">PDFをダウンロード</button><button class="ghost" id="print">印刷</button></div>' +
         '<div class="card">' + r.html + '</div>';
       bindBack();
       document.getElementById('print').onclick = function () { window.print(); };
+      document.getElementById('dl').onclick = function () { downloadPdf(req); };
     });
+  }
+  // 本人の分のPDFをGASで作って受け取り、端末に保存する
+  function downloadPdf(req) {
+    var b = document.getElementById('dl');
+    b.disabled = true; b.textContent = '作成中…';
+    var q = { action: 'pdf', token: store.token, pin: pin };
+    if (req.action === 'gensen') { q.kind = 'gensen'; q.year = req.year; } else { q.ym = req.ym; }
+    call(q).then(function (r) {
+      b.disabled = false; b.textContent = 'PDFをダウンロード';
+      if (!r.ok) { if (!handleAuthError(r)) alertBox(r.message || 'PDFを作れませんでした。'); return; }
+      var bin = atob(r.pdf), arr = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      var url = URL.createObjectURL(new Blob([arr], { type: 'application/pdf' }));
+      var a = document.createElement('a'); a.href = url; a.download = r.name; document.body.appendChild(a); a.click();
+      setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 4000);
+    });
+  }
+  function alertBox(msg) {
+    var c = app.querySelector('.card'); if (c) c.insertAdjacentHTML('afterbegin', err(msg));
   }
   function bindBack() { var b = document.getElementById('back'); if (b) b.onclick = showList; }
 
@@ -198,7 +218,7 @@
       var h = '<div class="bar noprint"><button class="ghost" id="back">‹ 一覧</button><button class="ghost" id="print">印刷・PDFで保存</button></div>';
       h += '<div class="card">' + r.html + '</div>';
       if (waiting) {
-        h += '<div class="card noprint"><p class="sub">当院が作成した' + esc(ymLabel(ym)) + 'の業務報告書兼請求書です。内容でよければ「承諾する」を押してください。</p>' +
+        h += '<div class="card noprint"><p class="sub">当院が作成した' + esc(ymLabel(ym)) + 'の業務報告書兼支払明細書です。内容でよければ「承諾する」を押してください。</p>' +
           '<button class="primary" id="agree">この内容で承諾する（' + yen(r.amount) + '）</button>' +
           '<button class="link" id="fix">直してほしい所がある</button></div>';
       }
@@ -207,7 +227,7 @@
       document.getElementById('print').onclick = function () { window.print(); };
       if (!waiting) return;
       document.getElementById('agree').onclick = function () {
-        if (!confirm(ymLabel(ym) + 'の業務報告書兼請求書（' + yen(r.amount) + '）を承諾しますか？')) return;
+        if (!confirm(ymLabel(ym) + 'の業務報告書兼支払明細書（' + yen(r.amount) + '）を承諾しますか？')) return;
         busy();
         call({ action: 'houjin_agree', token: store.token, pin: pin, ym: ym, amount: r.amount }).then(function (res) {
           if (!res.ok && handleAuthError(res)) return;
