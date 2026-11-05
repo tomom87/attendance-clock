@@ -108,6 +108,10 @@ if (/\/slip\//.test(location.pathname)) document.title = '職員ポータル';
   var slipKey = PORTAL_MODE ? (params.get('k') || store.ks || '') : '';      // 職員ポータルのキー（ポータル専用のときだけ）。入職手続きの招待は t
   var PORTAL_ELSEWHERE = '給与明細・契約書などは、院長から届いた職員ポータルのURLから開いてください。';
   var invToken = params.get('t') || '';
+  // 招待リンク（2026-11-05 院長）：slip/?k=<SLIP_SITE_KEY>#c=<招待コード>。コードは # の後ろ＝GitHub Pages にも参照元（Referer）にも送られない。
+  // 職員ポータル（slip/）でだけ読み、読んだらすぐアドレスバー・履歴の項目から消す（startPortal の replaceState）。保存しない。
+  // 未登録の端末では招待コードの画面に入れておく（登録は本人が「次へ」→ PINを2回）。登録済みの端末では使わずPINを聞く。打刻専用の画面（clock/）では読まない
+  var linkCode = '';
   var ppin = '';          // 職員ポータルのPIN（この画面を開いている間だけ覚える。保存しない）
   // ポータルの自動ロック（レビュー4回目 UI01/UI02）：5分さわらない・画面を離れる（非表示・ページを閉じる）とPINと明細などの表示を消す。
   // pgen はログインの世代。ロック・閉じる・登録の解除で1つ進め、それより前に出した要求の応答は表示も保存（PDF）もしない
@@ -211,13 +215,23 @@ if (/\/slip\//.test(location.pathname)) document.title = '職員ポータル';
     document.title = '職員ポータル';
     var b = document.getElementById('brand'); if (b) b.textContent = '西新井内科クリニック 職員ポータル';
     if (params.get('k') && store.ks !== params.get('k')) { store.ks = params.get('k'); saveStore(); }
-    // アドレスバーからキーを消す（画面の写真などで広がらないように）
+    linkCode = hashCode();
+    // アドレスバーからキーと招待コード（#c=）を消す（画面の写真・履歴などで広がらないように）
     try { history.replaceState(null, '', location.pathname); } catch (e) {}
     if (!slipKey) {
       card.innerHTML = '<h1>院長から届いたURLから開いてください</h1><p class="sub">職員ポータルは、院長から届いたURL（メール・入職手続きの最後の画面など）から開いてください。</p>';
       return;
     }
     if (store.token) portalPin(); else inviteScreen();
+  }
+
+  /** 招待リンクの # の後ろの c=（招待コード）。無ければ空 */
+  function hashCode() {
+    var h = String(location.hash || '').replace(/^#/, '');
+    if (!h) return '';
+    var c = '';
+    try { c = new URLSearchParams(h).get('c') || ''; } catch (e) { c = ''; }
+    return String(c).replace(/[\s-]/g, '').toUpperCase().slice(0, 32);
   }
 
   /** 打刻専用の画面で、職員ポータルの代わりに出す案内（ポータルは開かない） */
@@ -576,7 +590,7 @@ if (/\/slip\//.test(location.pathname)) document.title = '職員ポータル';
       '<p class="pinmsg">' + esc(o.msg || '') + '</p></div>' +
       '<div class="pinbox"><span></span><span></span><span></span><span></span></div>' +
       '<div class="pad">' + [1, 2, 3, 4, 5, 6, 7, 8, 9].map(function (n) { return '<button data-n="' + n + '">' + n + '</button>'; }).join('') +
-      '<button class="fn" data-f="back">戻る</button><button data-n="0">0</button><button class="fn" data-f="del">消す</button></div>';
+      '<button class="fn" data-f="back">戻る</button><button data-n="0">0</button><button class="fn" data-f="del">消す</button></div>' + (o.footHtml || '');
     var boxes = card.querySelectorAll('.pinbox span');
     function paint() { for (var i = 0; i < 4; i++) boxes[i].textContent = i < digits.length ? '●' : ''; }
     Array.prototype.forEach.call(card.querySelectorAll('.pad button'), function (b) {
@@ -601,7 +615,11 @@ if (/\/slip\//.test(location.pathname)) document.title = '職員ポータル';
     if (!PORTAL_MODE) return portalElsewhere();   // 打刻専用の画面からは職員ポータルを開かない
     if (!store.token) return inviteScreen(msg);
     padScreen({ title: 'PINを入力', subHtml: esc(store.name || '') + 'さんのPIN（数字4桁）を入れてください。<br>給与明細・契約書などを開きます。',
-      msg: msg, onDone: function (pin) { ppin = pin; lastAct = Date.now(); portalHome(); } });
+      msg: msg, onDone: function (pin) { ppin = pin; lastAct = Date.now(); portalHome(); },
+      // 登録済みの端末で招待リンクを開いたとき：招待コードは使わずPINを聞く。PINを忘れた・別の人の登録のときだけ、本人が押して登録し直せる（自動では使わない）
+      footHtml: linkCode ? '<button class="link" id="relink">PINがわからない・' + esc(store.name || '') + 'さんではないときは、招待リンクで登録し直す</button>' : '' });
+    var b = document.getElementById('relink');
+    if (b) b.onclick = function () { inviteScreen(); };
   }
 
   /** ポータルの応答のエラー。処理したら true */
@@ -621,6 +639,7 @@ if (/\/slip\//.test(location.pathname)) document.title = '職員ポータル';
     loading('開いています…');
     papi({ action: 'home', token: store.token, pin: ppin }).then(function (h) {
       if (portalErr(h, portalHome)) return;
+      linkCode = '';   // PINで開けた（本人の端末）＝招待リンクのコードはもう使わない（サーバーの招待は72時間で切れる・院長が取り消せる）
       renderHome(h);
     }).catch(function () { netError(portalHome); });
   }
@@ -814,9 +833,11 @@ if (/\/slip\//.test(location.pathname)) document.title = '職員ポータル';
       card.innerHTML = '<h1>QRコードから開いてください</h1><p class="sub">休憩室に貼ってあるQRコードか、院長から届いたURLで開いてください。</p>';
       return;
     }
+    var pre = PORTAL_MODE ? linkCode : '';   // 招待リンクのコード（職員ポータルだけ）
     card.innerHTML = '<h1>招待コードで登録</h1>' + (msg ? '<div class="warn">' + esc(msg) + '</div>' : '') +
-      '<p class="sub">院長から届いた招待コード（英数字10文字）を入れてください。</p>' +
-      '<input type="text" class="textin" id="code" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="例：ABCD2345EF">' +
+      (pre ? '<p class="sub">招待リンクの招待コードを入れてあります。<br>「次へ」を押してください。</p>'
+           : '<p class="sub">院長から届いた招待コード（英数字10文字）を入れてください。</p>') +
+      '<input type="text" class="textin" id="code" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="例：ABCD2345EF" value="' + esc(pre) + '">' +
       '<div id="invErr"></div>' +
       '<button class="main c-出勤" id="invNext">次へ</button>' +
       (siteKey ? '<button class="link" id="invBack">名前の一覧に戻る</button>' : '');
@@ -825,7 +846,7 @@ if (/\/slip\//.test(location.pathname)) document.title = '職員ポータル';
       if (!/^[A-Z0-9]{8,16}$/.test(code)) { document.getElementById('invErr').innerHTML = '<div class="error">招待コードを確かめてください。</div>'; return; }
       loading('確認中…');
       papi({ action: 'invite_check', code: code }).then(function (r) {
-        if (!r.ok) return inviteScreen(r.message || r.error);
+        if (!r.ok) { linkCode = ''; return inviteScreen(r.message || r.error); }   // 使えないコードは入れ直さない
         inviteConfirm(code, r);
       }).catch(function () { netError(function () { inviteScreen(msg); }); });
     };
@@ -864,8 +885,10 @@ if (/\/slip\//.test(location.pathname)) document.title = '職員ポータル';
         papi({ action: 'invite_redeem', code: code, newPin: pin, agree: agree }).then(function (r) {
           if (!r.ok) {
             if (r.error === 'bad_new_pin' || r.error === 'weak_pin') return invitePin(code, info, agree, 'new1', null, r.message);
+            linkCode = '';
             return inviteScreen(r.message || r.error);
           }
+          linkCode = '';
           store.token = r.token; store.name = r.name;
           if (!saveStore()) { showError('この端末では登録を覚えておけません（プライベートブラウズなど）。普段のブラウザで開き直してください。', null); return; }
           // 打刻専用の画面：打刻する人は打刻の画面へ。打刻しない人には職員ポータルのURLを案内する（ここでは開かない）
