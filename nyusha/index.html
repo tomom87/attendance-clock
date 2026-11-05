@@ -145,6 +145,14 @@ function renderForm() {
   intro.appendChild(el('p', null, (D.mode === '既存職員の書面化' ? 'あなたの雇用契約の内容を書面で確認するため、' : D.mode === '更新・条件変更' ? '雇用契約の更新・条件変更のため、' : '入職にあたり、') +
     '雇用契約書（労働条件通知書 兼 雇用契約書）を作成します。下の「あなたの労働条件」をご確認のうえ、お名前・住所・連絡先などを入力してください。'));
   intro.appendChild(el('p', { 'class': 'note' }, '入力いただいた情報は、雇用契約書の作成、労務・社会保険の手続き、給与の振込、緊急時の連絡のためにのみ利用し、院長が管理します。給与振込口座の入力にはキャッシュカードか通帳をご用意ください。マイナンバーは' + (D.mode === '新規採用' ? '入職日' : '次の出勤日') + 'に別途確認します（ここでは入力しません）。'));
+  if (D.quick) {
+    // 既存職員の簡易手続き（2026-11-06）：住所・口座などの入力はなし
+    intro.innerHTML = '';
+    intro.appendChild(el('h2', null, 'はじめに'));
+    intro.appendChild(el('p', null, (D.mode === '更新・条件変更' ? '雇用契約の更新・条件変更のため、' : 'あなたの雇用契約の内容を書面で確認するため、') +
+      '雇用契約書（労働条件通知書 兼 雇用契約書）を作成します。住所・連絡先・口座などの入力は不要です（当院で登録済みのものを使います）。'));
+    intro.appendChild(el('p', null, '下の「あなたの労働条件」を確認し、誓約書と受け取り方法を選んで送信してください。送信のあと、給与明細の電子交付への同意と、職員ポータルの登録（PINを決める）をお願いします。'));
+  }
   if (D.jcOnly) {
     intro.innerHTML = '';
     intro.appendChild(el('h2', null, 'はじめに'));
@@ -284,7 +292,7 @@ function syncDelivery() {
 
 function field(parent, f) {
   var lab = el('label', { 'class': 'f', 'for': 'f_' + f.key }, f.label);
-  if (f.req) lab.appendChild(el('span', { 'class': 'req' }, '必須'));
+  if (f.req && f.type !== 'fixed') lab.appendChild(el('span', { 'class': 'req' }, '必須'));
   parent.appendChild(lab);
   var inp;
   if (f.type === 'fixed') {
