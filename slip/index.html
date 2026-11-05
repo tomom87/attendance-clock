@@ -2,28 +2,910 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
-<title>給与明細</title>
-<style>
-  html, body { margin: 0; background: #f4f6f3; color: #1f2a1c; font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", "Yu Gothic", sans-serif; }
-  .card { max-width: 440px; margin: 24px auto; background: #fff; border-radius: 18px; padding: 22px 18px; box-shadow: 0 2px 10px rgba(0,0,0,.06); line-height: 1.7; }
-  a { color: #5d7828; font-weight: 700; }
-</style>
+<title>勤怠打刻</title>
 <script>
-// 給与明細は職員ポータル（clock/）へ移りました（2026-11-05）。このURL（slip/?k=…）は院長が配ったまま使えるように残し、ポータルへ送る。
-// ks＝給与明細のキー（ポータルだけ使える。打刻はできない）
-(function () {
-  var k = new URLSearchParams(location.search).get('k') || '';
-  if (k) location.replace('../clock/?ks=' + encodeURIComponent(k));
-})();
+// このファイルは clock/index.html と slip/index.html に同じ中身で置く（2026-11-05 院長：打刻と職員ポータルの入口を分けた）。
+// /slip/ で開いたときは職員ポータル専用、それ以外（/clock/）は打刻専用。
+if (/\/slip\//.test(location.pathname)) document.title = '職員ポータル';
 </script>
+<style>
+  :root {
+    --bg: #f4f6f3; --card: #fff; --ink: #1f2a1c; --sub: #5b6657; --line: #d9e0d5;
+    --in: #0a7f3b; --bs: #b86f00; --be: #0a7f8f; --out: #1a5aa8; --err: #c23a2a; --accent: #5d7828;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", "Yu Gothic", sans-serif; }
+  body { min-height: 100vh; display: flex; justify-content: center; padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); }
+  .wrap { width: 100%; max-width: 440px; }
+  .brand { font-size: 13px; color: var(--sub); text-align: center; margin: 4px 0 12px; }
+  .card { background: var(--card); border-radius: 18px; padding: 22px 18px; box-shadow: 0 2px 10px rgba(0,0,0,.06); }
+  h1 { font-size: 22px; margin: 0 0 4px; text-align: center; }
+  .sub { color: var(--sub); font-size: 14px; text-align: center; margin: 0 0 16px; line-height: 1.6; }
+  .clock { font-size: 44px; font-weight: 700; text-align: center; letter-spacing: 1px; margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
+  .date { text-align: center; color: var(--sub); font-size: 14px; margin-bottom: 14px; }
+  .last { text-align: center; font-size: 14px; color: var(--sub); margin: 0 0 16px; }
+  button { font: inherit; cursor: pointer; border: 0; border-radius: 14px; width: 100%; }
+  button:disabled { opacity: .5; cursor: default; }
+  .main { color: #fff; font-size: 30px; font-weight: 700; padding: 26px 10px; margin-bottom: 12px; }
+  .alt { background: #fff; border: 2px solid var(--line); color: var(--ink); font-size: 18px; font-weight: 600; padding: 14px 10px; margin-bottom: 10px; }
+  .c-出勤 { background: var(--in); } .c-休憩開始 { background: var(--bs); } .c-休憩終了 { background: var(--be); } .c-退勤 { background: var(--out); }
+  .t-出勤 { color: var(--in); } .t-休憩開始 { color: var(--bs); } .t-休憩終了 { color: var(--be); } .t-退勤 { color: var(--out); }
+  .altlabel { font-size: 13px; color: var(--sub); margin: 6px 0 8px; text-align: center; }
+  .link { background: none; color: var(--sub); text-decoration: underline; font-size: 14px; padding: 12px; }
+  .names { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .names button { background: #fff; border: 2px solid var(--line); font-size: 18px; font-weight: 600; padding: 16px 6px; }
+  .slow { font-size: 13px; min-height: 20px; }
+  .pinhead { text-align: center; }
+  .pinhead h1 { white-space: nowrap; }
+  .pinsub { height: 82px; margin: 0; overflow: hidden; font-size: 13px; line-height: 1.55; }
+  .pinmsg { height: 40px; margin: 4px 0 0; color: var(--err); font-size: 13px; font-weight: 700; line-height: 1.5; overflow: hidden; }
+  .pinbox { display: flex; justify-content: center; gap: 10px; margin: 8px 0 16px; }
+  .pinbox span { width: 44px; height: 54px; border: 2px solid var(--line); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 28px; }
+  .pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .pad button { background: #eef2ec; font-size: 26px; font-weight: 600; padding: 14px 0; }
+  .pad .fn { background: transparent; font-size: 16px; color: var(--sub); }
+  .result { text-align: center; }
+  .result .big { font-size: 46px; font-weight: 800; margin: 8px 0 4px; }
+  .result .time { font-size: 22px; margin-bottom: 10px; }
+  .note { font-size: 14px; color: var(--sub); text-align: center; line-height: 1.6; margin: 10px 0 0; }
+  .toast { position: fixed; left: 12px; right: 12px; top: 10px; z-index: 50; box-shadow: 0 4px 16px rgba(0,0,0,.18); cursor: pointer; }
+  .warn { background: #fff6e6; border: 1px solid #f1d39a; color: #7a4b00; border-radius: 10px; padding: 10px 12px; font-size: 14px; margin: 10px 0; line-height: 1.6; }
+  .error { background: #fdecea; border: 1px solid #f3b8b0; color: var(--err); border-radius: 10px; padding: 12px; font-size: 15px; margin: 10px 0; line-height: 1.6; }
+  .cancel { background: #fff; border: 2px solid var(--err); color: var(--err); font-size: 17px; font-weight: 700; padding: 12px; margin-top: 14px; }
+  .timein { display: block; width: 100%; font-size: 26px; padding: 10px; border: 2px solid var(--line); border-radius: 12px; margin: 8px 0 14px; text-align: center; }
+  .spinner { width: 36px; height: 36px; border: 4px solid var(--line); border-top-color: var(--accent); border-radius: 50%; margin: 24px auto; animation: sp 0.9s linear infinite; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  .hidden { display: none; }
+  .addlink { margin-top: 16px; }
+  .textin { display: block; width: 100%; font-size: 22px; padding: 12px; border: 2px solid var(--line); border-radius: 12px; margin: 6px 0 4px; font-family: inherit; }
+  .hint { font-size: 13px; color: var(--sub); margin: 0 0 14px; line-height: 1.6; }
+  .roles { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin: 6px 0 16px; }
+  .roles button { background: #fff; border: 2px solid var(--line); font-size: 17px; font-weight: 600; padding: 12px 4px; }
+  .roles button.on { border-color: var(--accent); background: #eef4e3; }
+  .lbl { font-size: 14px; font-weight: 700; margin: 10px 0 0; }
+  /* 職員ポータル（2026-11-05） */
+  .sec { font-size: 15px; font-weight: 700; margin: 18px 0 8px; }
+  .menu button, .list button { display: flex; justify-content: space-between; align-items: center; width: 100%; background: #fff; border: 2px solid var(--line);
+    font-size: 17px; font-weight: 600; padding: 14px; margin-bottom: 8px; color: var(--ink); text-align: left; }
+  .list .amt { font-variant-numeric: tabular-nums; color: var(--sub); font-weight: 500; font-size: 15px; }
+  .consent { white-space: pre-wrap; font-size: 14px; line-height: 1.7; background: var(--bg); border-radius: 12px; padding: 12px; text-align: left; }
+  .check { display: flex; gap: 10px; align-items: flex-start; font-size: 15px; margin-top: 12px; text-align: left; }
+  .check input { width: 22px; height: 22px; margin-top: 2px; flex: none; }
+  .bar { display: flex; gap: 8px; justify-content: space-between; margin-bottom: 12px; }
+  .bar button { width: auto; background: #fff; border: 2px solid var(--line); color: var(--ink); font-size: 15px; font-weight: 600; padding: 10px 12px; }
+  .doc { text-align: left; }
+  .wrap.wide { max-width: 600px; }
+  @media print { body { background: #fff; padding: 0; } .noprint, .brand { display: none !important; } .card { box-shadow: none; padding: 0; } }
+</style>
 </head>
 <body>
-<div class="card">
-  <p>給与明細は「職員ポータル」に移りました。</p>
-  <p>自動で移らないときは、院長から届いたURLか、休憩室のQRコードから開き直してください。</p>
+<div class="wrap">
+  <p class="brand" id="brand">西新井内科クリニック 勤怠打刻</p>
+  <div class="card" id="card"><div class="spinner"></div><p class="note">読み込み中…</p></div>
 </div>
+
+<script>
+(function () {
+  'use strict';
+
+  var GAS_URL = 'https://script.google.com/macros/s/AKfycbxOtEvv01yRsHhaOYrl1kt0jommKLKJ_tGXdS863oVfP5wUcVO8JwHBA6M4YVLquiqH/exec';
+  var STORE_KEY = 'nishiarai.clock.v1';
+  var GPS_TIMEOUT_MS = 8000;
+
+  var card = document.getElementById('card');
+  var store = loadStore();
+  var params = new URLSearchParams(location.search);
+  // 入口を分けた（2026-11-05 院長）：同じファイルを clock/ と slip/ に置き、開いた場所で使い分ける
+  //   clock/?k=<CLOCK_SITE_KEY> … 打刻専用（休憩室のQR）。職員ポータルの画面は出さない
+  //   slip/?k=<SLIP_SITE_KEY>   … 職員ポータル専用（給与明細・源泉徴収票・契約書・労働条件）。打刻の画面は出さない
+  //   同じオリジンなので、打刻で登録した端末（localStorage の token）はポータルでもPINだけで使える
+  var PORTAL_MODE = /\/slip\//.test(location.pathname);
+  var siteKey = PORTAL_MODE ? '' : (params.get('k') || store.k || '');       // 打刻のキー（打刻専用のときだけ）
+  var slipKey = PORTAL_MODE ? (params.get('k') || store.ks || '') : '';      // 職員ポータルのキー（ポータル専用のときだけ）。入職手続きの招待は t
+  var PORTAL_ELSEWHERE = '給与明細・契約書などは、院長から届いた職員ポータルのURLから開いてください。';
+  var invToken = params.get('t') || '';
+  var ppin = '';          // 職員ポータルのPIN（この画面を開いている間だけ覚える。保存しない）
+  // ポータルの自動ロック（レビュー4回目 UI01/UI02）：5分さわらない・画面を離れる（非表示・ページを閉じる）とPINと明細などの表示を消す。
+  // pgen はログインの世代。ロック・閉じる・登録の解除で1つ進め、それより前に出した要求の応答は表示も保存（PDF）もしない
+  var pgen = 0;
+  var IDLE_MS = 5 * 60 * 1000;
+  var lastAct = Date.now();
+  var status = null;
+  var geoPromise = null;
+  var clockTimer = null, cancelTimer = null, slowTimer = null;
+
+  // ---------- 保存（端末ごと） ----------
+  function loadStore() {
+    try { return JSON.parse(localStorage.getItem(STORE_KEY) || '{}') || {}; } catch (e) { return {}; }
+  }
+  function saveStore() {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); return true; } catch (e) { return false; }
+  }
+
+  // ---------- 通信 ----------
+  function api(body) {
+    body.k = siteKey;
+    return fetch(GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(body)
+    }).then(function (r) { return r.json(); });
+  }
+
+  // ---------- 位置情報（画面を開いた時点で取り始める） ----------
+  function startGeo() {
+    geoPromise = new Promise(function (resolve) {
+      if (!navigator.geolocation) return resolve({ err: 'unsupported' });
+      var done = false;
+      var timer = setTimeout(function () { if (!done) { done = true; resolve({ err: 'timeout' }); } }, GPS_TIMEOUT_MS);
+      navigator.geolocation.getCurrentPosition(function (p) {
+        if (done) return; done = true; clearTimeout(timer);
+        resolve({ lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy });
+      }, function (e) {
+        if (done) return; done = true; clearTimeout(timer);
+        resolve({ err: e && e.code === 1 ? 'denied' : (e && e.code === 3 ? 'timeout' : 'unavailable') });
+      }, { enableHighAccuracy: true, timeout: GPS_TIMEOUT_MS, maximumAge: 30000 });
+    });
+  }
+
+  // ---------- 表示の部品 ----------
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function clearTimers() {
+    if (clockTimer) { clearInterval(clockTimer); clockTimer = null; }
+    if (cancelTimer) { clearInterval(cancelTimer); cancelTimer = null; }
+    if (slowTimer) { clearTimeout(slowTimer); slowTimer = null; }
+  }
+  function loading(msg) {
+    clearTimers();
+    card.innerHTML = '<div class="spinner"></div><p class="note">' + esc(msg || '通信中…') + '</p><p class="note slow" id="slow"></p>';
+    // 3秒を過ぎたら、止まっていないことを伝える（サーバーの起動待ちで10秒ほどかかることがある）
+    slowTimer = setTimeout(function () {
+      var el = document.getElementById('slow');
+      if (el) el.textContent = '初回は10秒ほどかかることがあります。このままお待ちください。';
+    }, 3000);
+  }
+  function showError(msg, retry) {
+    clearTimers();
+    card.innerHTML = '<h1>うまくいきませんでした</h1><div class="error">' + esc(msg) + '</div>' +
+      (retry ? '<button class="alt" id="retry">もう一度</button>' : '') +
+      '<p class="note">直らないときは院長に伝えてください。</p>';
+    if (retry) document.getElementById('retry').onclick = retry;
+  }
+  function netError(retry) {
+    showError('通信できませんでした。電波を確認して、もう一度押してください。（打刻は記録されていません）', retry);
+  }
+  function hhmm() {
+    var d = new Date();
+    return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+  }
+
+  // ---------- 起動 ----------
+  function start() {
+    if (/^[0-9a-f]{40}$/.test(invToken)) { location.replace('../nyusha/?t=' + invToken); return; }
+    if (PORTAL_MODE) return startPortal();
+    // 打刻専用。前に配った職員ポータルのURL（clock/?ks=…）は職員ポータル（slip/?k=…）へ送る（同じ値）
+    if (params.get('ks')) { location.replace('../slip/?k=' + encodeURIComponent(params.get('ks'))); return; }
+    if (!siteKey) {
+      // 前に clock/?ks= で職員ポータルを開いた端末（打刻しない人のブックマーク clock/ 等）は職員ポータルへ
+      if (store.ks) { location.replace('../slip/'); return; }
+      card.innerHTML = '<h1>QRコードから開いてください</h1><p class="sub">休憩室に貼ってあるQRコードを、スマホの<b>カメラアプリ</b>で読み取ってください。</p>';
+      return;
+    }
+    if (store.k !== siteKey) { store.k = siteKey; saveStore(); }
+    // アドレスバーから合言葉を消す（画面の写真などで広がらないように）
+    try { history.replaceState(null, '', location.pathname); } catch (e) {}
+    startGeo();
+    if (store.token) loadStatus(); else loadRoster();
+  }
+
+  /** 職員ポータル専用（slip/?k=<SLIP_SITE_KEY>）。打刻の画面・名前の一覧・位置情報は使わない */
+  function startPortal() {
+    document.title = '職員ポータル';
+    var b = document.getElementById('brand'); if (b) b.textContent = '西新井内科クリニック 職員ポータル';
+    if (params.get('k') && store.ks !== params.get('k')) { store.ks = params.get('k'); saveStore(); }
+    // アドレスバーからキーを消す（画面の写真などで広がらないように）
+    try { history.replaceState(null, '', location.pathname); } catch (e) {}
+    if (!slipKey) {
+      card.innerHTML = '<h1>院長から届いたURLから開いてください</h1><p class="sub">職員ポータルは、院長から届いたURL（メール・入職手続きの最後の画面など）から開いてください。</p>';
+      return;
+    }
+    if (store.token) portalPin(); else inviteScreen();
+  }
+
+  /** 打刻専用の画面で、職員ポータルの代わりに出す案内（ポータルは開かない） */
+  function portalElsewhere(title) {
+    clearTimers(); wide(false); ppin = '';
+    card.innerHTML = '<h1>' + esc(title || '職員ポータルは別のURLです') + '</h1><p class="sub">' + esc(PORTAL_ELSEWHERE) + '</p>' +
+      (store.token ? '<button class="link" id="notme">' + esc(store.name || '') + 'さんではありませんか？</button>' : '');
+    var b = document.getElementById('notme');
+    if (b) b.onclick = notMe;
+  }
+
+  // ---------- 登録: 氏名を選ぶ ----------
+  function loadRoster() {
+    if (PORTAL_MODE) return inviteScreen();   // 職員ポータルでは名前の一覧を出さない
+    loading('名簿を読み込み中…');
+    api({ action: 'roster' }).then(function (r) {
+      if (!r.ok) return showError(r.message || r.error, loadRoster);
+      card.innerHTML = '<h1>はじめに登録します</h1>' +
+        '<p class="sub">この端末で打刻するのは初めてです。<br>ご自分の名前を選んでください。</p>' +
+        '<div class="names">' + r.staff.map(function (s, i) {
+          return '<button data-i="' + i + '">' + esc(s.name) + '</button>';
+        }).join('') + '</div>' +
+        '<button class="alt addlink" id="addMe">一覧に自分の名前がないとき</button>' +
+        '<button class="link" id="haveCode">院長から招待コードをもらった方</button>';
+      Array.prototype.forEach.call(card.querySelectorAll('.names button'), function (b) {
+        b.onclick = function () {
+          var st = r.staff[Number(b.dataset.i)];
+          // PINをまだ決めていない人は、院長の招待コードで登録する（自己登録は止めている。2026-11-05）
+          if (!st.pinSet && !r.selfRegister) return inviteScreen(st.name + 'さんはまだPINが決まっていません。院長から招待コードをもらって入れてください。');
+          pinScreen(st);
+        };
+      });
+      document.getElementById('addMe').onclick = function () {
+        if (!r.selfRegister) return inviteScreen('一覧に名前がない方は、院長から招待コードをもらって入れてください。');
+        addScreen();
+      };
+      document.getElementById('haveCode').onclick = function () { inviteScreen(); };
+    }).catch(function () { netError(loadRoster); });
+  }
+
+  // ---------- 登録: 一覧に名前がないとき（自分で追加） ----------
+  function addScreen(prev) {
+    prev = prev || {};
+    var role = prev.role || '';
+    card.innerHTML = '<h1>名前を追加</h1>' +
+      '<p class="sub">一覧に名前がない場合は、ここで追加できます。</p>' +
+      '<p class="lbl">氏名（フルネーム）</p>' +
+      '<input type="text" class="textin" id="nm" autocomplete="name" placeholder="例：山田花子" value="' + esc(prev.name || '') + '">' +
+      '<p class="hint">姓と名の間にスペースは不要です（入れても自動で詰めます）。</p>' +
+      '<p class="lbl">職種</p>' +
+      '<div class="roles">' + ['事務', '看護師', 'その他'].map(function (x) {
+        return '<button data-r="' + x + '"' + (x === role ? ' class="on"' : '') + '>' + x + '</button>';
+      }).join('') + '</div>' +
+      '<div id="addErr"></div>' +
+      '<button class="main c-出勤" id="addNext">次へ</button>' +
+      '<button class="link" id="addBack">戻る</button>';
+    Array.prototype.forEach.call(card.querySelectorAll('.roles button'), function (b) {
+      b.onclick = function () {
+        role = b.dataset.r;
+        document.getElementById('addErr').innerHTML = '';
+        Array.prototype.forEach.call(card.querySelectorAll('.roles button'), function (x) { x.className = x === b ? 'on' : ''; });
+      };
+    });
+    document.getElementById('addBack').onclick = function () { loadRoster(); };
+    document.getElementById('addNext').onclick = function () {
+      var nm = document.getElementById('nm').value.replace(/[\s\u3000]+/g, '');
+      var err = '';
+      if (nm.length < 2 || nm.length > 20) err = '氏名を2〜20文字で入れてください。';
+      else if (/[0-9０-９]/.test(nm)) err = '氏名に数字は使えません。';
+      else if (!role) err = '職種を選んでください。';
+      if (err) { document.getElementById('addErr').innerHTML = '<div class="error">' + esc(err) + '</div>'; return; }
+      pinScreen({ name: nm, pinSet: false, isNew: true, role: role });
+    };
+  }
+
+  // ---------- 登録: PIN ----------
+  function pinScreen(staff, stage, first, msg) {
+    stage = stage || (staff.pinSet ? 'enter' : 'new1');
+    var digits = '';
+    var title = stage === 'enter' ? 'PINを入力' : (stage === 'new1' ? 'PINを決めてください' : 'もう一度入力');
+    var sub = stage === 'enter'
+      ? esc(staff.name) + 'さんのPIN（数字4桁）を入れてください。<br>忘れた場合は院長へ。'
+      : (stage === 'new1'
+        ? esc(staff.name) + 'さん用のPIN（数字4桁）を決めます。<br>別のスマホで登録し直すときに使います。'
+        : '確認のため、同じPINを<br>もう一度入れてください。');
+    // 見出し・説明・メッセージの高さを固定し、1回目と2回目でテンキーの位置が変わらないようにする
+    card.innerHTML = '<div class="pinhead"><h1>' + title + '</h1><p class="sub pinsub">' + sub + '</p>' +
+      '<p class="pinmsg">' + esc(msg || '') + '</p></div>' +
+      '<div class="pinbox"><span></span><span></span><span></span><span></span></div>' +
+      '<div class="pad">' + [1, 2, 3, 4, 5, 6, 7, 8, 9].map(function (n) { return '<button data-n="' + n + '">' + n + '</button>'; }).join('') +
+      '<button class="fn" data-f="back">戻る</button><button data-n="0">0</button><button class="fn" data-f="del">消す</button></div>';
+    var boxes = card.querySelectorAll('.pinbox span');
+    function paint() { for (var i = 0; i < 4; i++) boxes[i].textContent = i < digits.length ? '●' : ''; }
+    Array.prototype.forEach.call(card.querySelectorAll('.pad button'), function (b) {
+      b.onclick = function () {
+        if (b.dataset.f === 'back') return staff.isNew ? addScreen(staff) : loadRoster();
+        if (b.dataset.f === 'del') { digits = digits.slice(0, -1); return paint(); }
+        if (digits.length >= 4) return;
+        digits += b.dataset.n; paint();
+        if (digits.length === 4) setTimeout(function () { done(digits); }, 150);
+      };
+    });
+    function done(pin) {
+      if (stage === 'new1') return pinScreen(staff, 'new2', pin);
+      if (stage === 'new2' && pin !== first) {
+        return pinScreen(staff, 'new1', null, '1回目と2回目が違いました。もう一度決めてください。');
+      }
+      register(staff, stage === 'enter' ? { pin: pin } : { newPin: pin });
+    }
+  }
+
+  function register(staff, pinBody) {
+    loading('登録中…');
+    var body = staff.isNew
+      ? { action: 'register', newName: staff.name, role: staff.role }
+      : { action: 'register', name: staff.name };
+    if (pinBody.pin) body.pin = pinBody.pin;
+    if (pinBody.newPin) body.newPin = pinBody.newPin;
+    api(body).then(function (r) {
+      if (!r.ok) {
+        if (r.error === 'bad_pin') return pinScreen(staff, 'enter', null, r.message);
+        if (r.error === 'need_invite') return inviteScreen(r.message);
+        if (r.error === 'pin_reset') { staff.pinSet = false; return pinScreen(staff, 'new1', null, r.message); }
+        if (staff.isNew && (r.error === 'bad_name')) {
+          addScreen(staff);
+          document.getElementById('addErr').innerHTML = '<div class="error">' + esc(r.message) + '</div>';
+          return;
+        }
+        return showError(r.message || r.error, loadRoster);
+      }
+      store.token = r.token; store.name = r.name;
+      var kept = saveStore();
+      if (!kept) {
+        showError('この端末では登録を覚えておけません（プライベートブラウズなど）。普段のブラウザで開き直してください。', null);
+        return;
+      }
+      loadStatus();
+    }).catch(function () { netError(function () { register(staff, pinBody); }); });
+  }
+
+  // ---------- 打刻画面 ----------
+  function loadStatus() {
+    if (PORTAL_MODE) return portalPin();      // 職員ポータルでは打刻の画面を出さない
+    loading(store.name ? store.name + 'さんの状態を確認中…' : '確認中…');
+    api({ action: 'status', token: store.token }).then(function (r) {
+      if (!r.ok) return tokenProblem(r);
+      status = r; renderStatus();
+    }).catch(function () { netError(loadStatus); });
+  }
+
+  function tokenProblem(r) {
+    if (r.error === 'invalid_token') {
+      delete store.token; delete store.name; saveStore();
+      loadRoster();
+      return;
+    }
+    // 打刻しない人（医師など）・打刻の対象外になった人：職員ポータルは別のURL（ここでは開かない。2026-11-05 院長）
+    if (r.error === 'inactive') return portalElsewhere('打刻の対象ではありません');
+    showError(r.message || r.error, loadStatus);
+  }
+
+  function renderStatus(extra) {
+    clearTimers();
+    var s = status;
+    var h = '<h1>' + esc(s.name) + 'さん</h1>' +
+      '<div class="clock" id="now">' + hhmm() + '</div><div class="date">' + esc(s.date) + '</div>';
+    if (extra) h += extra;
+
+    if (!s.allowed.length) {
+      h += '<p class="last">本日の打刻は完了しています' + (s.last ? '（' + esc(s.last.label) + ' ' + esc(s.last.time) + '）' : '') + '</p>';
+    } else {
+      h += '<p class="last">' + (s.last ? '直前の打刻：' + esc(s.last.label) + '（' + esc(s.last.time) + '）' : '本日はまだ打刻していません') + '</p>';
+      var def = s.def && s.allowed.indexOf(s.def) >= 0 ? s.def : s.allowed[0];
+      h += '<button class="main c-' + def + '" data-l="' + def + '">' + def + '</button>';
+      var others = s.allowed.filter(function (l) { return l !== def; });
+      if (others.length) {
+        h += '<p class="altlabel">ちがう操作のときは</p>' + others.map(function (l) {
+          return '<button class="alt" data-l="' + l + '">' + l + '</button>';
+        }).join('');
+      }
+    }
+    h += cancelHtml(s.cancellable);
+    h += '<button class="link" id="notme">' + esc(s.name) + 'さんではありませんか？</button>';
+    card.innerHTML = h;
+
+    Array.prototype.forEach.call(card.querySelectorAll('button[data-l]'), function (b) {
+      b.onclick = function () { choose(b.dataset.l); };
+    });
+    document.getElementById('notme').onclick = notMe;
+    bindCancel(s.cancellable);
+    clockTimer = setInterval(function () { var n = document.getElementById('now'); if (n) n.textContent = hhmm(); }, 5000);
+  }
+
+  function cancelHtml(c) {
+    if (!c) return '';
+    return '<button class="cancel" id="cancelBtn">' + esc(c.label) + '（' + esc(c.time) + '）を取り消す <span id="cRemain"></span></button>';
+  }
+  function bindCancel(c) {
+    var btn = document.getElementById('cancelBtn');
+    if (!btn || !c) return;
+    var until = Date.now() + c.remainSec * 1000;
+    function tick() {
+      var sec = Math.floor((until - Date.now()) / 1000);
+      var sp = document.getElementById('cRemain');
+      if (sec <= 0) { btn.remove(); if (cancelTimer) { clearInterval(cancelTimer); cancelTimer = null; } return; }
+      if (sp) sp.textContent = '（あと' + Math.floor(sec / 60) + ':' + ('0' + (sec % 60)).slice(-2) + '）';
+    }
+    tick();
+    cancelTimer = setInterval(tick, 1000);
+    btn.onclick = doCancel;
+  }
+
+  function choose(label) {
+    if (status.state === 'break' && label === '退勤') return breakEndScreen();
+    punch(label, null);
+  }
+
+  // ---------- 休憩中の退勤 ----------
+  function breakEndScreen() {
+    clearTimers();
+    card.innerHTML = '<h1>休憩終了が押されていません</h1>' +
+      '<p class="sub">休憩開始（' + esc(status.breakStart || '') + '）のあと、休憩終了が記録されていません。<br>休憩から戻った時刻を入れてください。</p>' +
+      '<input type="time" class="timein" id="be" step="60">' +
+      '<button class="main c-退勤" id="withBe">休憩終了を入れて退勤</button>' +
+      '<button class="alt" id="noBe">休憩終了なしで退勤</button>' +
+      '<button class="link" id="back">戻る</button>';
+    document.getElementById('withBe').onclick = function () {
+      var v = document.getElementById('be').value;
+      if (!/^\d{1,2}:\d{2}$/.test(v)) { alert('休憩から戻った時刻を入れてください。'); return; }
+      punch('退勤', v);
+    };
+    document.getElementById('noBe').onclick = function () { punch('退勤', null); };
+    document.getElementById('back').onclick = function () { renderStatus(); };
+  }
+
+  function punch(label, breakEnd) {
+    loading('位置情報を確認中…');
+    var ua = navigator.userAgent.slice(0, 120);
+    if (!geoPromise) startGeo();   // ポータルから打刻の画面に来たとき
+    geoPromise.then(function (g) {
+      loading(label + 'を記録中…');
+      var body = { action: 'punch', token: store.token, label: label, ua: ua };
+      if (g && typeof g.lat === 'number') { body.lat = g.lat; body.lng = g.lng; body.acc = g.acc; }
+      else body.geoErr = (g && g.err) || 'none';
+      if (breakEnd) body.breakEnd = breakEnd;
+      return api(body);
+    }).then(function (r) {
+      if (!r.ok) {
+        if (r.error === 'invalid_token') return tokenProblem(r);
+        return showError(r.message || r.error, loadStatus);
+      }
+      status = r;
+      showResult(r);
+      startGeo();   // 次の打刻（取消→打ち直し）に備える
+    }).catch(function () { netError(function () { punch(label, breakEnd); }); });
+  }
+
+  function showResult(r) {
+    clearTimers();
+    var h = '<div class="result"><p class="sub">' + esc(r.name) + 'さん</p>' +
+      '<div class="big t-' + esc(r.label) + '">' + esc(r.label) + '</div>' +
+      '<div class="time">' + esc(r.time) + ' に記録しました</div></div>';
+    (r.warn || []).forEach(function (w) { h += '<div class="warn">' + esc(w) + '</div>'; });
+    h += cancelHtml(r.cancellable);
+    h += '<p class="note">この画面は閉じてかまいません。</p>';
+    card.innerHTML = h;
+    bindCancel(r.cancellable);
+  }
+
+  function doCancel() {
+    var c = status && status.cancellable;
+    if (!c) return;
+    if (!confirm(c.label + '（' + c.time + '）を取り消しますか？')) return;
+    loading('取り消し中…');
+    api({ action: 'cancel', token: store.token }).then(function (r) {
+      if (!r.ok) {
+        if (r.error === 'invalid_token') return tokenProblem(r);
+        return showError(r.message || r.error, loadStatus);
+      }
+      status = r;
+      renderStatus('<div class="warn">' + esc(r.cancelled.label) + '（' + esc(r.cancelled.time) + '）を取り消しました。正しい操作を押してください。</div>');
+    }).catch(function () { netError(loadStatus); });
+  }
+
+  function notMe() {
+    if (!confirm('この端末の登録（' + (store.name || '') + 'さん）を解除して、名前を選び直しますか？')) return;
+    var t = store.token;
+    delete store.token; delete store.name; saveStore();
+    api({ action: 'forget', token: t }).catch(function () {});
+    loadRoster();
+  }
+
+  // ==================================================
+  // 職員ポータル（2026-11-05）：給与明細・源泉徴収票・契約書・労働条件
+  //   サーバーは端末トークン＋PINで本人を決める（ここから氏名などは送らない）。PINは保存しない
+  // ==================================================
+  function papi(body) {
+    body.app = 'portal';
+    body.k = siteKey || slipKey;
+    // PINを付けた要求（明細・契約書などの本人の情報）は、送ったときの世代を覚える。ロックの後に届いた応答は捨てる（UI02）
+    var g = pgen, authed = body.pin !== undefined;
+    var stale = function () { return authed && g !== pgen; };
+    var never = function () { return new Promise(function () {}); };
+    return fetch(GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(body)
+    }).then(function (r) { return stale() ? never() : r.json(); }).then(function (r) {
+      if (stale()) return never();
+      // 前に開いたときからPINの間違いがあれば、どの画面でも知らせる（ホームは renderHome が出す。レビュー3回目 R3-07）
+      if (r && r.pinWarn && body.action !== 'home' && body.action !== 'consent') pinToast(r.pinWarn);
+      return r;
+    }, function (e) {
+      if (stale()) return never();
+      throw e;
+    });
+  }
+  /**
+   * ポータルを閉じる（UI01）：PINを忘れ、明細・源泉徴収票・契約書・労働条件の表示を消して、PINの画面にする。
+   * ポータルを開いていない（打刻の画面・登録の途中など）ときは何もしない＝打刻・端末の登録は今までどおり
+   */
+  function lockPortal(msg) {
+    if (!ppin) return false;
+    ppin = ''; pgen++;
+    var t = document.getElementById('pinToast');
+    if (t && t.parentNode) t.parentNode.removeChild(t);
+    card.innerHTML = '';
+    wide(false);
+    if (store.token) portalPin(msg || ''); else inviteScreen();
+    return true;
+  }
+  function pinToast(text) {
+    var old = document.getElementById('pinToast');
+    if (old) old.parentNode.removeChild(old);
+    var d = document.createElement('div');
+    d.id = 'pinToast'; d.className = 'warn toast'; d.setAttribute('role', 'alert');
+    d.textContent = text + '（タップで閉じる）';
+    d.onclick = function () { if (d.parentNode) d.parentNode.removeChild(d); };
+    document.body.appendChild(d);
+  }
+  /** お知らせを1枚出して、「次へ」で next() */
+  function notice(title, text, next) {
+    clearTimers();
+    card.innerHTML = '<h1>' + esc(title) + '</h1><div class="warn">' + esc(text) + '</div><button class="alt" id="noticeNext">次へ</button>';
+    document.getElementById('noticeNext').onclick = next;
+  }
+  function wide(on) { var w = document.querySelector('.wrap'); if (w) w.className = on ? 'wrap wide' : 'wrap'; }
+  function yen(n) { n = Number(n) || 0; return (n < 0 ? '−' : '') + '¥' + Math.abs(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+  function ymLabel(ym) { return String(ym).slice(0, 4) + '年' + Number(String(ym).slice(5, 7)) + '月分'; }
+
+  /** 4桁のテンキー（ポータルのPIN・招待コードでのPIN設定） */
+  function padScreen(o) {
+    clearTimers(); wide(false);
+    var digits = '';
+    card.innerHTML = '<div class="pinhead"><h1>' + esc(o.title) + '</h1><p class="sub pinsub">' + (o.subHtml || '') + '</p>' +
+      '<p class="pinmsg">' + esc(o.msg || '') + '</p></div>' +
+      '<div class="pinbox"><span></span><span></span><span></span><span></span></div>' +
+      '<div class="pad">' + [1, 2, 3, 4, 5, 6, 7, 8, 9].map(function (n) { return '<button data-n="' + n + '">' + n + '</button>'; }).join('') +
+      '<button class="fn" data-f="back">戻る</button><button data-n="0">0</button><button class="fn" data-f="del">消す</button></div>';
+    var boxes = card.querySelectorAll('.pinbox span');
+    function paint() { for (var i = 0; i < 4; i++) boxes[i].textContent = i < digits.length ? '●' : ''; }
+    Array.prototype.forEach.call(card.querySelectorAll('.pad button'), function (b) {
+      b.onclick = function () {
+        if (b.dataset.f === 'back') return o.onBack ? o.onBack() : portalBack();
+        if (b.dataset.f === 'del') { digits = digits.slice(0, -1); return paint(); }
+        if (digits.length >= 4) return;
+        digits += b.dataset.n; paint();
+        if (digits.length === 4) setTimeout(function () { o.onDone(digits); }, 150);
+      };
+    });
+  }
+  /** ポータルから戻る先：打刻できる端末なら打刻の画面、そうでなければPIN */
+  function portalBack() {
+    ppin = '';
+    if (siteKey && store.token) return loadStatus();
+    if (store.token) return portalPin();
+    return siteKey ? loadRoster() : inviteScreen();
+  }
+
+  function portalPin(msg) {
+    if (!PORTAL_MODE) return portalElsewhere();   // 打刻専用の画面からは職員ポータルを開かない
+    if (!store.token) return inviteScreen(msg);
+    padScreen({ title: 'PINを入力', subHtml: esc(store.name || '') + 'さんのPIN（数字4桁）を入れてください。<br>給与明細・契約書などを開きます。',
+      msg: msg, onDone: function (pin) { ppin = pin; lastAct = Date.now(); portalHome(); } });
+  }
+
+  /** ポータルの応答のエラー。処理したら true */
+  function portalErr(r, retry) {
+    if (r.ok) return false;
+    if (r.error === 'bad_pin') { ppin = ''; portalPin(r.message); return true; }
+    if (r.error === 'locked') { ppin = ''; showError(r.message, null); return true; }
+    if (r.error === 'need_invite') { ppin = ''; inviteScreen(r.message); return true; }
+    if (r.error === 'invalid_token') { ppin = ''; delete store.token; delete store.name; saveStore(); if (siteKey) loadRoster(); else inviteScreen(r.message); return true; }
+    if (r.error === 'no_consent') { portalHome(); return true; }
+    showError(r.message || r.error, retry || null);
+    return true;
+  }
+
+  function portalHome() {
+    if (!PORTAL_MODE) return portalElsewhere();
+    loading('開いています…');
+    papi({ action: 'home', token: store.token, pin: ppin }).then(function (h) {
+      if (portalErr(h, portalHome)) return;
+      renderHome(h);
+    }).catch(function () { netError(portalHome); });
+  }
+
+  function renderHome(h) {
+    clearTimers(); wide(false);
+    var x = '<h1>' + esc(h.name) + 'さん</h1><p class="sub">職員ポータル</p>';
+    if (h.pinWarn) x += '<div class="warn">' + esc(h.pinWarn) + '</div>';
+    x += '<div class="sec">給与明細・源泉徴収票</div>';
+    if (h.slips.available) {
+      x += '<div class="menu"><button id="goSlips"><span>給与明細・源泉徴収票を見る</span><span>›</span></button></div>';
+    } else if (h.slips.needConsent) {
+      x += '<p class="hint">' + esc(h.slips.message) + '</p><div class="consent">' + esc(h.slips.consentText) + '</div>' +
+        '<label class="check"><input id="agree" type="checkbox"><span>給与支払明細書と源泉徴収票を、この画面（電磁的方法）で受け取ることに同意します。</span></label>' +
+        '<button class="alt" id="doAgree">同意して給与明細を見る</button>' +
+        '<p class="hint">同意しない場合は、このまま閉じてください（紙でお渡しします）。</p>';
+    } else {
+      x += '<p class="hint">' + esc(h.slips.message) + '</p>';
+    }
+    x += '<div class="sec">契約書・労働条件</div>';
+    if (h.contracts.count) {
+      x += '<div class="menu"><button id="goContracts"><span>締結済みの契約書（' + h.contracts.count + '件）</span><span>›</span></button>' +
+        '<button id="goTerms"><span>今の労働条件</span><span>›</span></button></div>';
+    } else {
+      x += '<p class="hint">' + esc(h.contracts.message) + '</p>';
+    }
+    if (h.punch) x += '<p class="hint">打刻は、休憩室のQRコードから開く「勤怠打刻」の画面でします。</p>';
+    x += '<button class="link" id="plock">閉じる（PINを入れ直す）</button>';
+    // 打刻にも使っている端末（打刻のキーを覚えている）では出さない（解除すると打刻もできなくなるため）
+    if (!store.k) x += '<button class="link" id="pforget">この端末の登録を解除する</button>';
+    card.innerHTML = x;
+    var b;
+    if ((b = document.getElementById('goSlips'))) b.onclick = slipsList;
+    if ((b = document.getElementById('goContracts'))) b.onclick = contractsList;
+    if ((b = document.getElementById('goTerms'))) b.onclick = termsView;
+    if ((b = document.getElementById('doAgree'))) b.onclick = function () {
+      if (!document.getElementById('agree').checked) { alert('同意する場合はチェックを入れてください。'); return; }
+      loading('記録しています…');
+      papi({ action: 'consent', token: store.token, pin: ppin, agree: true }).then(function (r) {
+        if (portalErr(r, portalHome)) return;
+        renderHome(r);
+      }).catch(function () { netError(portalHome); });
+    };
+    document.getElementById('plock').onclick = function () { lockPortal(''); };
+    if ((b = document.getElementById('pforget'))) b.onclick = function () {
+      if (!confirm('この端末の登録（' + (store.name || '') + 'さん）を解除しますか？もう一度使うには院長の招待コードが要ります。')) return;
+      var tk = store.token;
+      delete store.token; delete store.name; saveStore(); ppin = ''; pgen++;
+      papi({ action: 'forget', token: tk }).catch(function () {});
+      inviteScreen();
+    };
+  }
+
+  function backBar(extra) {
+    return '<div class="bar noprint"><button id="back">‹ 戻る</button>' + (extra || '') + '<button id="barLock">閉じる</button></div>';
+  }
+
+  function slipsList() {
+    loading('読み込み中…');
+    papi({ action: 'slips', token: store.token, pin: ppin }).then(function (r) {
+      if (portalErr(r, slipsList)) return;
+      wide(false);
+      var h = backBar() + '<h1>' + esc(r.name) + 'さん</h1>';
+      h += '<div class="sec">給与明細</div><div class="list">' + (r.slips.length ? r.slips.map(function (s) {
+        return '<button data-ym="' + esc(s.ym) + '"><span>' + esc(ymLabel(s.ym)) + '</span><span class="amt">差引 ' + yen(s.net) + '</span></button>';
+      }).join('') : '<p class="hint">まだありません。</p>') + '</div>';
+      if (r.gensen.length) {
+        h += '<div class="sec">源泉徴収票</div><div class="list">' + r.gensen.map(function (g) {
+          return '<button data-year="' + esc(g.year) + '"><span>' + esc('令和' + (g.year - 2018) + '年分（' + g.year + '年）') + '</span><span class="amt">›</span></button>';
+        }).join('') + '</div>';
+      }
+      if (r.houjin && r.houjin.length) {
+        h += '<div class="sec">業務報告書兼支払明細書（法人）</div><div class="list">' + r.houjin.map(function (x) {
+          return '<button data-hym="' + esc(x.ym) + '"><span>' + esc(ymLabel(x.ym)) + '</span><span class="amt">' + esc(x.state) + '　' + yen(x.amount) + '</span></button>';
+        }).join('') + '</div>';
+      }
+      card.innerHTML = h;
+      document.getElementById('back').onclick = portalHome;
+      Array.prototype.forEach.call(card.querySelectorAll('[data-ym]'), function (b) { b.onclick = function () { docView({ action: 'slip', ym: b.getAttribute('data-ym') }); }; });
+      Array.prototype.forEach.call(card.querySelectorAll('[data-year]'), function (b) { b.onclick = function () { docView({ action: 'gensen', year: Number(b.getAttribute('data-year')) }); }; });
+      Array.prototype.forEach.call(card.querySelectorAll('[data-hym]'), function (b) { b.onclick = function () { houjinView(b.getAttribute('data-hym')); }; });
+    }).catch(function () { netError(slipsList); });
+  }
+
+  function docView(req) {
+    loading('読み込み中…');
+    req.token = store.token; req.pin = ppin;
+    papi(req).then(function (r) {
+      if (portalErr(r, slipsList)) return;
+      wide(true);
+      card.innerHTML = backBar('<button id="dl">PDFを保存</button><button id="print">印刷</button>') + '<div class="doc">' + r.html + '</div>';
+      document.getElementById('back').onclick = slipsList;
+      document.getElementById('print').onclick = function () { window.print(); };
+      document.getElementById('dl').onclick = function () {
+        var q = { action: 'pdf' };
+        if (req.action === 'gensen') { q.kind = 'gensen'; q.year = req.year; } else { q.ym = req.ym; }
+        savePdf(q, document.getElementById('dl'));
+      };
+    }).catch(function () { netError(slipsList); });
+  }
+
+  /** 本人の分のPDFをGASで作って受け取り、端末に保存する */
+  function savePdf(q, btn) {
+    var label = btn.textContent;
+    btn.disabled = true; btn.textContent = '作成中…';
+    q.token = store.token; q.pin = ppin;
+    papi(q).then(function (r) {
+      btn.disabled = false; btn.textContent = label;
+      if (!r.ok) { if (r.error === 'bad_pin' || r.error === 'locked' || r.error === 'need_invite' || r.error === 'invalid_token') return portalErr(r); alert(r.message || 'PDFを作れませんでした。'); return; }
+      var bin = atob(r.pdf), arr = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      var url = URL.createObjectURL(new Blob([arr], { type: 'application/pdf' }));
+      var a = document.createElement('a'); a.href = url; a.download = r.name; document.body.appendChild(a); a.click();
+      setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 4000);
+    }).catch(function () { btn.disabled = false; btn.textContent = label; alert('通信できませんでした。'); });
+  }
+
+  function houjinView(ym) {
+    loading('読み込み中…');
+    papi({ action: 'houjin_get', token: store.token, pin: ppin, ym: ym }).then(function (r) {
+      if (portalErr(r, slipsList)) return;
+      wide(true);
+      var waiting = r.state === '承諾待ち';
+      var h = backBar('<button id="print">印刷・PDFで保存</button>') + '<div class="doc">' + r.html + '</div>';
+      if (waiting) {
+        h += '<div class="noprint"><p class="hint">当院が作成した' + esc(ymLabel(ym)) + 'の業務報告書兼支払明細書です。内容でよければ「承諾する」を押してください。</p>' +
+          '<button class="alt" id="hagree">この内容で承諾する（' + yen(r.amount) + '）</button>' +
+          '<button class="link" id="hfix">直してほしい所がある</button></div>';
+      }
+      card.innerHTML = h;
+      document.getElementById('back').onclick = slipsList;
+      document.getElementById('print').onclick = function () { window.print(); };
+      if (!waiting) return;
+      document.getElementById('hagree').onclick = function () {
+        if (!confirm(ymLabel(ym) + 'の業務報告書兼支払明細書（' + yen(r.amount) + '）を承諾しますか？')) return;
+        loading('記録しています…');
+        papi({ action: 'houjin_agree', token: store.token, pin: ppin, ym: ym, amount: r.amount }).then(function (res) {
+          if (!res.ok && res.error !== 'changed' && res.error !== 'state' && portalErr(res)) return;
+          if (!res.ok) alert(res.message);
+          houjinView(ym);
+        }).catch(function () { netError(function () { houjinView(ym); }); });
+      };
+      document.getElementById('hfix').onclick = function () {
+        var c = prompt('直してほしい所を書いてください（院長に届きます）');
+        if (!c) return;
+        loading('記録しています…');
+        papi({ action: 'houjin_fix', token: store.token, pin: ppin, ym: ym, comment: c }).then(function (res) {
+          if (!res.ok && res.error !== 'state' && portalErr(res)) return;
+          if (!res.ok) alert(res.message);
+          houjinView(ym);
+        }).catch(function () { netError(function () { houjinView(ym); }); });
+      };
+    }).catch(function () { netError(slipsList); });
+  }
+
+  function contractsList() {
+    loading('読み込み中…');
+    papi({ action: 'contracts', token: store.token, pin: ppin }).then(function (r) {
+      if (portalErr(r, contractsList)) return;
+      wide(false);
+      var h = backBar() + '<h1>締結済みの契約書</h1>';
+      h += r.items.length ? '<div class="list">' + r.items.map(function (x) {
+        return '<button data-i="' + x.i + '"><span>' + esc(x.title) + '<br><small class="amt">' + esc((x.start || '') + (x.end ? '〜' + x.end : '〜')) +
+          '　' + esc(x.esign ? '電子署名' : '紙で締結') + '</small></span><span class="amt">PDF</span></button>';
+      }).join('') + '</div><p class="hint">紙で締結した契約書は、作成したときのPDF（署名欄は空）です。署名した原本は紙です。</p>'
+        : '<p class="hint">' + esc(r.message) + '</p>';
+      card.innerHTML = h;
+      document.getElementById('back').onclick = portalHome;
+      Array.prototype.forEach.call(card.querySelectorAll('[data-i]'), function (b) {
+        b.onclick = function () { savePdf({ action: 'contract_pdf', i: Number(b.getAttribute('data-i')) }, b); };
+      });
+    }).catch(function () { netError(contractsList); });
+  }
+
+  function termsView() {
+    loading('読み込み中…');
+    papi({ action: 'terms', token: store.token, pin: ppin }).then(function (r) {
+      if (portalErr(r, termsView)) return;
+      wide(true);
+      card.innerHTML = backBar('<button id="print">印刷</button>') + (r.html ? '<div class="doc">' + r.html + '</div>' : '<p class="hint">' + esc(r.message) + '</p>') +
+        (r.html && r.future && r.future.length ? '<p class="hint noprint">将来適用：' + r.future.map(function (f) { return esc(f.start + (f.end ? '〜' + f.end : '〜')); }).join('・') + ' の契約があります（「締結済みの契約書」のPDF）。</p>' : '');
+      document.getElementById('back').onclick = portalHome;
+      document.getElementById('print').onclick = function () { window.print(); };
+    }).catch(function () { netError(termsView); });
+  }
+
+  // ---------- 招待コード（院長が発行・1回限り・72時間）で登録 ----------
+  function inviteScreen(msg) {
+    clearTimers(); wide(false); ppin = '';
+    if (!siteKey && !slipKey) {
+      card.innerHTML = '<h1>QRコードから開いてください</h1><p class="sub">休憩室に貼ってあるQRコードか、院長から届いたURLで開いてください。</p>';
+      return;
+    }
+    card.innerHTML = '<h1>招待コードで登録</h1>' + (msg ? '<div class="warn">' + esc(msg) + '</div>' : '') +
+      '<p class="sub">院長から届いた招待コード（英数字10文字）を入れてください。</p>' +
+      '<input type="text" class="textin" id="code" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="例：ABCD2345EF">' +
+      '<div id="invErr"></div>' +
+      '<button class="main c-出勤" id="invNext">次へ</button>' +
+      (siteKey ? '<button class="link" id="invBack">名前の一覧に戻る</button>' : '');
+    document.getElementById('invNext').onclick = function () {
+      var code = document.getElementById('code').value.replace(/[\s-]/g, '').toUpperCase();
+      if (!/^[A-Z0-9]{8,16}$/.test(code)) { document.getElementById('invErr').innerHTML = '<div class="error">招待コードを確かめてください。</div>'; return; }
+      loading('確認中…');
+      papi({ action: 'invite_check', code: code }).then(function (r) {
+        if (!r.ok) return inviteScreen(r.message || r.error);
+        inviteConfirm(code, r);
+      }).catch(function () { netError(function () { inviteScreen(msg); }); });
+    };
+    var b = document.getElementById('invBack');
+    if (b) b.onclick = loadRoster;
+  }
+
+  function inviteConfirm(code, info) {
+    clearTimers();
+    var h = '<h1>' + esc(info.name) + 'さんの登録</h1>' +
+      '<p class="sub">この端末で、' + esc(info.name) + 'さん用のPIN（数字4桁）を決めます。<br>それまでに登録していた端末は使えなくなります。</p>';
+    if (info.setupProblem) h += '<div class="warn">' + esc(info.setupMessage) + '</div>';
+    if (info.askConsent) {
+      h += '<div class="sec">給与明細・源泉徴収票の電子交付</div><div class="consent">' + esc(info.consentText) + '</div>' +
+        '<label class="check"><input id="agree" type="checkbox"><span>給与支払明細書と源泉徴収票を、この画面（電磁的方法）で受け取ることに同意します（同意しない場合はチェックせずに進んでください。紙でお渡しします）。</span></label>';
+    }
+    h += '<button class="main c-出勤" id="invGo">PINを決める</button><button class="link" id="invBack2">戻る</button>';
+    card.innerHTML = h;
+    document.getElementById('invBack2').onclick = function () { inviteScreen(); };
+    document.getElementById('invGo').onclick = function () {
+      var agree = !!(document.getElementById('agree') && document.getElementById('agree').checked);
+      invitePin(code, info, agree, 'new1', null, '');
+    };
+  }
+
+  function invitePin(code, info, agree, stage, first, msg) {
+    padScreen({
+      title: stage === 'new1' ? 'PINを決めてください' : 'もう一度入力',
+      subHtml: stage === 'new1' ? esc(info.name) + 'さん用のPIN（数字4桁）を決めます。<br>同じ数字や連番（1234など）は使えません。' : '確認のため、同じPINを<br>もう一度入れてください。',
+      msg: msg,
+      onBack: function () { inviteConfirm(code, info); },
+      onDone: function (pin) {
+        if (stage === 'new1') return invitePin(code, info, agree, 'new2', pin, '');
+        if (pin !== first) return invitePin(code, info, agree, 'new1', null, '1回目と2回目が違いました。もう一度決めてください。');
+        loading('登録中…');
+        papi({ action: 'invite_redeem', code: code, newPin: pin, agree: agree }).then(function (r) {
+          if (!r.ok) {
+            if (r.error === 'bad_new_pin' || r.error === 'weak_pin') return invitePin(code, info, agree, 'new1', null, r.message);
+            return inviteScreen(r.message || r.error);
+          }
+          store.token = r.token; store.name = r.name;
+          if (!saveStore()) { showError('この端末では登録を覚えておけません（プライベートブラウズなど）。普段のブラウザで開き直してください。', null); return; }
+          // 打刻専用の画面：打刻する人は打刻の画面へ。打刻しない人には職員ポータルのURLを案内する（ここでは開かない）
+          var go = function () {
+            if (!PORTAL_MODE) return r.punch ? loadStatus() : portalElsewhere('登録しました');
+            ppin = pin; lastAct = Date.now(); portalHome();
+          };
+          if (r.consent === false) return notice('登録しました', r.consentMessage, go);   // 同意を記録できなかったことを伝える（R3-06）
+          go();
+        }).catch(function () { netError(function () { inviteScreen(); }); });
+      }
+    });
+  }
+
+  // 画面に戻ってきたとき（別アプリから戻る等）は状態を取り直す。離れたとき（非表示）はポータルを閉じる（UI01）
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden') { lockPortal(''); return; }
+    if (document.visibilityState === 'visible' && store.token && status && document.getElementById('now')) loadStatus();
+  });
+  window.addEventListener('pagehide', function () { lockPortal(''); });
+  // 5分さわらなければポータルを閉じる（打刻の画面には関係しない）
+  ['pointerdown', 'keydown', 'touchstart', 'scroll'].forEach(function (ev) {
+    document.addEventListener(ev, function () { lastAct = Date.now(); }, { capture: true, passive: true });
+  });
+  setInterval(function () {
+    if (ppin && Date.now() - lastAct >= IDLE_MS) lockPortal('しばらく操作がなかったため閉じました。続けるときはPINを入れてください。');
+  }, 15000);
+  // ほかのタブでこの端末の登録を解除・登録し直したら、このタブのポータルも閉じる
+  window.addEventListener('storage', function (e) {
+    if (e.key !== STORE_KEY || !ppin) return;
+    store = loadStore();
+    lockPortal('');
+  });
+  // 一覧・明細などの上の「閉じる」
+  card.addEventListener('click', function (e) {
+    if (e.target && e.target.id === 'barLock') lockPortal('');
+  });
+
+  start();
+})();
+</script>
 </body>
 </html>

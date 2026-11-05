@@ -66,7 +66,7 @@
  * 送信のあと、電子交付への同意（乙欄の人）とPINを決めて、職員ポータル（clock/）へ進む。
  */
 var GAS_URL = 'https://script.google.com/macros/s/AKfycbxOtEvv01yRsHhaOYrl1kt0jommKLKJ_tGXdS863oVfP5wUcVO8JwHBA6M4YVLquiqH/exec';
-var PORTAL_STORE = 'nishiarai.clock.v1';   // 職員ポータル（clock/）と同じ保存先
+var PORTAL_STORE = 'nishiarai.clock.v1';   // 職員ポータル（slip/）・勤怠打刻（clock/）と同じ保存先
 if (!window.google || !window.google.script) {
   window.google = { script: { get run() {
     var ok = null, ng = null;
@@ -432,7 +432,7 @@ function finishScreen(msg) {
     if (!r.ok) { w.appendChild(el('p', { 'class': 'err' }, r.message || r.error)); return; }
     if (r.already) {
       w.appendChild(el('h2', null, '職員ポータル'));
-      w.appendChild(el('p', null, 'すでに登録済みです。いつもの職員ポータル（打刻の画面）から、給与明細・契約書などを見られます。このページは閉じて構いません。'));
+      w.appendChild(el('p', null, 'すでに登録済みです。給与明細・契約書などは、院長から届いた職員ポータルのURLから見られます。このページは閉じて構いません。'));
       return;
     }
     w.appendChild(el('h2', null, '最後に：職員ポータルの登録'));
@@ -478,8 +478,13 @@ function finishScreen(msg) {
           : 'この端末では登録を覚えておけませんでした（プライベートブラウズなど）。院長に伝えてください。'));
         if (x.consent === false) w.appendChild(el('p', { 'class': 'err', id: 'pcons' }, x.consentMessage));   // 同意を記録できなかった（R3-06）
         if (kept) {
-          var a = el('a', { 'class': 'go', href: '../clock/' + (x.k ? '?k=' + encodeURIComponent(x.k) : '?ks=' + encodeURIComponent(x.ks || '')) }, '職員ポータルを開く');
-          w.appendChild(a);
+          // 職員ポータルは slip/?k=<SLIP_SITE_KEY>（2026-11-05 院長：打刻と入口を分けた）。打刻する人（サーバーが k を返したとき）だけ打刻の画面も
+          var pk = x.ks || x.k || '';
+          w.appendChild(el('a', { 'class': 'go', id: 'goPortal', href: '../slip/' + (pk ? '?k=' + encodeURIComponent(pk) : '') }, '職員ポータルを開く'));
+          if (x.k) {
+            w.appendChild(el('p', { 'class': 'note' }, '打刻は、休憩室のQRコードから開く「勤怠打刻」の画面でします（この端末はもう登録されています）。'));
+            w.appendChild(el('a', { 'class': 'go', id: 'goClock', href: '../clock/?k=' + encodeURIComponent(x.k) }, '勤怠打刻の画面を開く'));
+          }
         }
       }).withFailureHandler(function(e) {
         go.disabled = false; go.textContent = '登録する'; er.textContent = '通信できませんでした。もう一度押してください。（' + e.message + '）';

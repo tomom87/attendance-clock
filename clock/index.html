@@ -5,7 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
-<title>勤怠打刻・職員ポータル</title>
+<title>勤怠打刻</title>
+<script>
+// このファイルは clock/index.html と slip/index.html に同じ中身で置く（2026-11-05 院長：打刻と職員ポータルの入口を分けた）。
+// /slip/ で開いたときは職員ポータル専用、それ以外（/clock/）は打刻専用。
+if (/\/slip\//.test(location.pathname)) document.title = '職員ポータル';
+</script>
 <style>
   :root {
     --bg: #f4f6f3; --card: #fff; --ink: #1f2a1c; --sub: #5b6657; --line: #d9e0d5;
@@ -63,7 +68,6 @@
   .roles button.on { border-color: var(--accent); background: #eef4e3; }
   .lbl { font-size: 14px; font-weight: 700; margin: 10px 0 0; }
   /* 職員ポータル（2026-11-05） */
-  .portalbtn { background: #fff; border: 2px solid var(--accent); color: var(--accent); font-size: 16px; font-weight: 700; padding: 12px 10px; margin-top: 18px; }
   .sec { font-size: 15px; font-weight: 700; margin: 18px 0 8px; }
   .menu button, .list button { display: flex; justify-content: space-between; align-items: center; width: 100%; background: #fff; border: 2px solid var(--line);
     font-size: 17px; font-weight: 600; padding: 14px; margin-bottom: 8px; color: var(--ink); text-align: left; }
@@ -80,7 +84,7 @@
 </head>
 <body>
 <div class="wrap">
-  <p class="brand">西新井内科クリニック 勤怠打刻</p>
+  <p class="brand" id="brand">西新井内科クリニック 勤怠打刻</p>
   <div class="card" id="card"><div class="spinner"></div><p class="note">読み込み中…</p></div>
 </div>
 
@@ -95,9 +99,14 @@
   var card = document.getElementById('card');
   var store = loadStore();
   var params = new URLSearchParams(location.search);
-  var siteKey = params.get('k') || store.k || '';
-  // 職員ポータル（2026-11-05）：給与明細の旧URL（slip/?k=）から来た人は ks（ポータルだけ使えるキー）。入職手続きの招待は t
-  var slipKey = params.get('ks') || store.ks || '';
+  // 入口を分けた（2026-11-05 院長）：同じファイルを clock/ と slip/ に置き、開いた場所で使い分ける
+  //   clock/?k=<CLOCK_SITE_KEY> … 打刻専用（休憩室のQR）。職員ポータルの画面は出さない
+  //   slip/?k=<SLIP_SITE_KEY>   … 職員ポータル専用（給与明細・源泉徴収票・契約書・労働条件）。打刻の画面は出さない
+  //   同じオリジンなので、打刻で登録した端末（localStorage の token）はポータルでもPINだけで使える
+  var PORTAL_MODE = /\/slip\//.test(location.pathname);
+  var siteKey = PORTAL_MODE ? '' : (params.get('k') || store.k || '');       // 打刻のキー（打刻専用のときだけ）
+  var slipKey = PORTAL_MODE ? (params.get('k') || store.ks || '') : '';      // 職員ポータルのキー（ポータル専用のときだけ）。入職手続きの招待は t
+  var PORTAL_ELSEWHERE = '給与明細・契約書などは、院長から届いた職員ポータルのURLから開いてください。';
   var invToken = params.get('t') || '';
   var ppin = '';          // 職員ポータルのPIN（この画面を開いている間だけ覚える。保存しない）
   // ポータルの自動ロック（レビュー4回目 UI01/UI02）：5分さわらない・画面を離れる（非表示・ページを閉じる）とPINと明細などの表示を消す。
@@ -181,19 +190,12 @@
   // ---------- 起動 ----------
   function start() {
     if (/^[0-9a-f]{40}$/.test(invToken)) { location.replace('../nyusha/?t=' + invToken); return; }
-    if (params.get('ks') && store.ks !== params.get('ks')) { store.ks = params.get('ks'); saveStore(); }
-    // 給与明細のメールのURL（slip/?k= → clock/?ks=）から来た登録済みの人は、普段QRで打刻している人でもPINの画面から（レビュー3回目 R3-10）
-    if (params.get('ks') && store.token) {
-      try { history.replaceState(null, '', location.pathname); } catch (e) {}
-      portalPin();
-      return;
-    }
+    if (PORTAL_MODE) return startPortal();
+    // 打刻専用。前に配った職員ポータルのURL（clock/?ks=…）は職員ポータル（slip/?k=…）へ送る（同じ値）
+    if (params.get('ks')) { location.replace('../slip/?k=' + encodeURIComponent(params.get('ks'))); return; }
     if (!siteKey) {
-      if (slipKey) {
-        try { history.replaceState(null, '', location.pathname); } catch (e) {}
-        if (store.token) portalPin(); else inviteScreen();
-        return;
-      }
+      // 前に clock/?ks= で職員ポータルを開いた端末（打刻しない人のブックマーク clock/ 等）は職員ポータルへ
+      if (store.ks) { location.replace('../slip/'); return; }
       card.innerHTML = '<h1>QRコードから開いてください</h1><p class="sub">休憩室に貼ってあるQRコードを、スマホの<b>カメラアプリ</b>で読み取ってください。</p>';
       return;
     }
@@ -204,8 +206,32 @@
     if (store.token) loadStatus(); else loadRoster();
   }
 
+  /** 職員ポータル専用（slip/?k=<SLIP_SITE_KEY>）。打刻の画面・名前の一覧・位置情報は使わない */
+  function startPortal() {
+    document.title = '職員ポータル';
+    var b = document.getElementById('brand'); if (b) b.textContent = '西新井内科クリニック 職員ポータル';
+    if (params.get('k') && store.ks !== params.get('k')) { store.ks = params.get('k'); saveStore(); }
+    // アドレスバーからキーを消す（画面の写真などで広がらないように）
+    try { history.replaceState(null, '', location.pathname); } catch (e) {}
+    if (!slipKey) {
+      card.innerHTML = '<h1>院長から届いたURLから開いてください</h1><p class="sub">職員ポータルは、院長から届いたURL（メール・入職手続きの最後の画面など）から開いてください。</p>';
+      return;
+    }
+    if (store.token) portalPin(); else inviteScreen();
+  }
+
+  /** 打刻専用の画面で、職員ポータルの代わりに出す案内（ポータルは開かない） */
+  function portalElsewhere(title) {
+    clearTimers(); wide(false); ppin = '';
+    card.innerHTML = '<h1>' + esc(title || '職員ポータルは別のURLです') + '</h1><p class="sub">' + esc(PORTAL_ELSEWHERE) + '</p>' +
+      (store.token ? '<button class="link" id="notme">' + esc(store.name || '') + 'さんではありませんか？</button>' : '');
+    var b = document.getElementById('notme');
+    if (b) b.onclick = notMe;
+  }
+
   // ---------- 登録: 氏名を選ぶ ----------
   function loadRoster() {
+    if (PORTAL_MODE) return inviteScreen();   // 職員ポータルでは名前の一覧を出さない
     loading('名簿を読み込み中…');
     api({ action: 'roster' }).then(function (r) {
       if (!r.ok) return showError(r.message || r.error, loadRoster);
@@ -334,6 +360,7 @@
 
   // ---------- 打刻画面 ----------
   function loadStatus() {
+    if (PORTAL_MODE) return portalPin();      // 職員ポータルでは打刻の画面を出さない
     loading(store.name ? store.name + 'さんの状態を確認中…' : '確認中…');
     api({ action: 'status', token: store.token }).then(function (r) {
       if (!r.ok) return tokenProblem(r);
@@ -347,8 +374,8 @@
       loadRoster();
       return;
     }
-    // 打刻しない人（医師など）・打刻の対象外になった人は、職員ポータルだけ開く
-    if (r.error === 'inactive') return portalPin('打刻の対象ではありません。給与明細・契約書などはPINを入れて開けます。');
+    // 打刻しない人（医師など）・打刻の対象外になった人：職員ポータルは別のURL（ここでは開かない。2026-11-05 院長）
+    if (r.error === 'inactive') return portalElsewhere('打刻の対象ではありません');
     showError(r.message || r.error, loadStatus);
   }
 
@@ -373,7 +400,6 @@
       }
     }
     h += cancelHtml(s.cancellable);
-    h += '<button class="portalbtn" id="toPortal">給与明細・契約書など（PIN）</button>';
     h += '<button class="link" id="notme">' + esc(s.name) + 'さんではありませんか？</button>';
     card.innerHTML = h;
 
@@ -381,7 +407,6 @@
       b.onclick = function () { choose(b.dataset.l); };
     });
     document.getElementById('notme').onclick = notMe;
-    document.getElementById('toPortal').onclick = function () { portalPin(); };
     bindCancel(s.cancellable);
     clockTimer = setInterval(function () { var n = document.getElementById('now'); if (n) n.textContent = hhmm(); }, 5000);
   }
@@ -573,6 +598,7 @@
   }
 
   function portalPin(msg) {
+    if (!PORTAL_MODE) return portalElsewhere();   // 打刻専用の画面からは職員ポータルを開かない
     if (!store.token) return inviteScreen(msg);
     padScreen({ title: 'PINを入力', subHtml: esc(store.name || '') + 'さんのPIN（数字4桁）を入れてください。<br>給与明細・契約書などを開きます。',
       msg: msg, onDone: function (pin) { ppin = pin; lastAct = Date.now(); portalHome(); } });
@@ -591,6 +617,7 @@
   }
 
   function portalHome() {
+    if (!PORTAL_MODE) return portalElsewhere();
     loading('開いています…');
     papi({ action: 'home', token: store.token, pin: ppin }).then(function (h) {
       if (portalErr(h, portalHome)) return;
@@ -620,15 +647,15 @@
     } else {
       x += '<p class="hint">' + esc(h.contracts.message) + '</p>';
     }
-    if (h.punch && siteKey) x += '<button class="alt" id="goPunch">打刻の画面へ</button>';
+    if (h.punch) x += '<p class="hint">打刻は、休憩室のQRコードから開く「勤怠打刻」の画面でします。</p>';
     x += '<button class="link" id="plock">閉じる（PINを入れ直す）</button>';
-    if (!siteKey) x += '<button class="link" id="pforget">この端末の登録を解除する</button>';
+    // 打刻にも使っている端末（打刻のキーを覚えている）では出さない（解除すると打刻もできなくなるため）
+    if (!store.k) x += '<button class="link" id="pforget">この端末の登録を解除する</button>';
     card.innerHTML = x;
     var b;
     if ((b = document.getElementById('goSlips'))) b.onclick = slipsList;
     if ((b = document.getElementById('goContracts'))) b.onclick = contractsList;
     if ((b = document.getElementById('goTerms'))) b.onclick = termsView;
-    if ((b = document.getElementById('goPunch'))) b.onclick = function () { ppin = ''; loadStatus(); };
     if ((b = document.getElementById('doAgree'))) b.onclick = function () {
       if (!document.getElementById('agree').checked) { alert('同意する場合はチェックを入れてください。'); return; }
       loading('記録しています…');
@@ -841,7 +868,11 @@
           }
           store.token = r.token; store.name = r.name;
           if (!saveStore()) { showError('この端末では登録を覚えておけません（プライベートブラウズなど）。普段のブラウザで開き直してください。', null); return; }
-          var go = function () { if (r.punch && siteKey) return loadStatus(); ppin = pin; lastAct = Date.now(); portalHome(); };
+          // 打刻専用の画面：打刻する人は打刻の画面へ。打刻しない人には職員ポータルのURLを案内する（ここでは開かない）
+          var go = function () {
+            if (!PORTAL_MODE) return r.punch ? loadStatus() : portalElsewhere('登録しました');
+            ppin = pin; lastAct = Date.now(); portalHome();
+          };
           if (r.consent === false) return notice('登録しました', r.consentMessage, go);   // 同意を記録できなかったことを伝える（R3-06）
           go();
         }).catch(function () { netError(function () { inviteScreen(); }); });
