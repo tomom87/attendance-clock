@@ -2,256 +2,28 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
 <title>給与明細</title>
 <style>
-  :root {
-    --bg: #f4f6f3; --card: #fff; --ink: #1f2a1c; --sub: #5b6657; --line: #d9e0d5;
-    --err: #c23a2a; --accent: #5d7828; --accent-bg: #eef4e3;
-  }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; background: var(--bg); color: var(--ink);
-    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", "Yu Gothic", sans-serif; }
-  .wrap { max-width: 560px; margin: 0 auto; padding: 16px 16px 40px; }
-  .brand { font-size: 13px; color: var(--sub); text-align: center; margin: 4px 0 12px; }
-  .card { background: var(--card); border-radius: 18px; padding: 22px 18px; box-shadow: 0 2px 10px rgba(0,0,0,.06); margin-bottom: 14px; }
-  h1 { font-size: 20px; margin: 0 0 12px; text-align: center; }
-  p { line-height: 1.7; }
-  .sub { color: var(--sub); font-size: 14px; }
-  button { font-family: inherit; border: 0; border-radius: 12px; cursor: pointer; }
-  .primary { display: block; width: 100%; background: var(--accent); color: #fff; font-size: 18px; font-weight: 700; padding: 14px; margin-top: 12px; }
-  .primary:disabled { opacity: .45; }
-  .ghost { background: #fff; border: 2px solid var(--line); color: var(--ink); font-size: 15px; font-weight: 600; padding: 10px 14px; }
-  .link { background: none; color: var(--sub); text-decoration: underline; font-size: 14px; padding: 12px 0; }
-  label { display: block; font-size: 14px; color: var(--sub); margin: 12px 0 4px; }
-  input[type=text], input[type=password], input[type=tel], input[type=date], textarea {
-    display: block; width: 100%; font-size: 20px; padding: 10px 12px; border: 2px solid var(--line); border-radius: 12px; font-family: inherit; background: #fff; }
-  textarea { font-size: 15px; min-height: 64px; }
-  .consent { white-space: pre-wrap; font-size: 14px; line-height: 1.7; background: var(--bg); border-radius: 12px; padding: 12px; }
-  .check { display: flex; gap: 10px; align-items: flex-start; font-size: 15px; color: var(--ink); margin-top: 12px; }
-  .check input { width: 22px; height: 22px; margin-top: 2px; flex: none; }
-  .error { background: #fdecea; border: 1px solid #f3b8b0; color: var(--err); border-radius: 10px; padding: 12px; font-size: 15px; margin: 10px 0; line-height: 1.6; }
-  .list button { display: flex; justify-content: space-between; align-items: center; width: 100%; background: #fff; border: 2px solid var(--line);
-    font-size: 16px; font-weight: 600; padding: 14px; margin-bottom: 8px; color: var(--ink); text-align: left; }
-  .list .amt { font-variant-numeric: tabular-nums; color: var(--sub); font-weight: 500; font-size: 15px; }
-  .sec { font-size: 15px; font-weight: 700; margin: 18px 0 8px; }
-  .bar { display: flex; gap: 8px; justify-content: space-between; margin-bottom: 12px; }
-  .spinner { width: 36px; height: 36px; border: 4px solid var(--line); border-top-color: var(--accent); border-radius: 50%; margin: 24px auto; animation: sp .9s linear infinite; }
-  @keyframes sp { to { transform: rotate(360deg); } }
-    @media print {
-    body { background: #fff; }
-    .noprint { display: none !important; }
-    .card { box-shadow: none; padding: 0; }
-  }
+  html, body { margin: 0; background: #f4f6f3; color: #1f2a1c; font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", "Yu Gothic", sans-serif; }
+  .card { max-width: 440px; margin: 24px auto; background: #fff; border-radius: 18px; padding: 22px 18px; box-shadow: 0 2px 10px rgba(0,0,0,.06); line-height: 1.7; }
+  a { color: #5d7828; font-weight: 700; }
 </style>
-</head>
-<body>
-<div class="wrap">
-  <div class="brand noprint">西新井内科クリニック</div>
-  <div id="app"><div class="card"><div class="spinner"></div></div></div>
-</div>
 <script>
+// 給与明細は職員ポータル（clock/）へ移りました（2026-11-05）。このURL（slip/?k=…）は院長が配ったまま使えるように残し、ポータルへ送る。
+// ks＝給与明細のキー（ポータルだけ使える。打刻はできない）
 (function () {
-  'use strict';
-  var GAS_URL = 'https://script.google.com/macros/s/AKfycbxOtEvv01yRsHhaOYrl1kt0jommKLKJ_tGXdS863oVfP5wUcVO8JwHBA6M4YVLquiqH/exec';
-  var STORE_KEY = 'slip_v1';
-  var PIN_LEN = 6;
-  var params = new URLSearchParams(location.search);
-  var K = params.get('k') || '';
-  var app = document.getElementById('app');
-  var pin = '';        // この画面を開いている間だけ覚える（保存しない）
-  var cache = null;    // 一覧
-
-  function load() { try { return JSON.parse(localStorage.getItem(STORE_KEY) || '{}') || {}; } catch (e) { return {}; } }
-  function save(s) { try { localStorage.setItem(STORE_KEY, JSON.stringify(s)); return true; } catch (e) { return false; } }
-  var store = load();
-
-  function call(body) {
-    body.app = 'slip'; body.k = K;
-    return fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) })
-      .then(function (r) { return r.json(); })
-      .catch(function () { return { ok: false, error: 'network', message: '通信できませんでした。電波の良い所でもう一度試してください。' }; });
-  }
-  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
-  function yen(n) { n = Number(n) || 0; return (n < 0 ? '−' : '') + '¥' + Math.abs(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
-  function ymLabel(ym) { return ym.slice(0, 4) + '年' + Number(ym.slice(5, 7)) + '月分'; }
-  function busy() { app.innerHTML = '<div class="card"><div class="spinner"></div></div>'; }
-  function err(msg) { return msg ? '<div class="error">' + esc(msg) + '</div>' : ''; }
-
-  // ---------- 初回登録 ----------
-  function showInvite(msg) {
-    busy();
-    call({ action: 'consent_text' }).then(function (r) {
-      if (!r.ok) { app.innerHTML = '<div class="card">' + err(r.message || 'このURLでは開けません。院長から届いたURLで開き直してください。') + '<button class="ghost" id="retry">もう一度</button></div>'; document.getElementById('retry').onclick = function () { showInvite(); }; return; }
-      app.innerHTML = '<div class="card"><h1>給与明細の受け取り登録</h1>' + err(msg) +
-        '<p class="sub">院長から届いた招待コードを入れてください（72時間有効・1回限り）。</p>' +
-        '<label for="code">招待コード</label><input id="code" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false">' +
-        '<div class="sec">電子交付について</div><div class="consent">' + esc(r.text) + '</div>' +
-        '<label class="check"><input id="agree" type="checkbox"><span>給与支払明細書と源泉徴収票を、この画面（電磁的方法）で受け取ることに同意します。</span></label>' +
-        '<label for="p1">PIN（数字' + PIN_LEN + '桁・自分で決める）</label><input id="p1" type="password" inputmode="numeric" maxlength="' + PIN_LEN + '" autocomplete="new-password">' +
-        '<label for="p2">PIN（確認のためもう一度）</label><input id="p2" type="password" inputmode="numeric" maxlength="' + PIN_LEN + '" autocomplete="new-password">' +
-        '<button class="primary" id="go">登録する</button></div>';
-      document.getElementById('go').onclick = function () {
-        var code = document.getElementById('code').value.trim();
-        var p1 = document.getElementById('p1').value, p2 = document.getElementById('p2').value;
-        var agree = document.getElementById('agree').checked;
-        if (!agree) return showInviteErr('同意にチェックを入れてください。');
-        if (!new RegExp('^\\d{' + PIN_LEN + '}$').test(p1)) return showInviteErr('PINは数字' + PIN_LEN + '桁にしてください。');
-        if (p1 !== p2) return showInviteErr('2回入れたPINが合いません。');
-        busy();
-        call({ action: 'invite', code: code, newPin: p1, agree: true }).then(function (res) {
-          if (!res.ok) { showInvite(res.message); return; }
-          store = { token: res.token, name: res.name };
-          if (!save(store)) { app.innerHTML = '<div class="card">' + err('この端末に登録を保存できませんでした（プライベートブラウズでは保存できません）。') + '</div>'; return; }
-          pin = p1;
-          showList();
-        });
-      };
-    });
-  }
-  function showInviteErr(m) {
-    var box = app.querySelector('.error');
-    if (box) box.textContent = m; else app.querySelector('h1').insertAdjacentHTML('afterend', err(m));
-    window.scrollTo(0, 0);
-  }
-
-  // ---------- PIN ----------
-  function showPin(msg) {
-    app.innerHTML = '<div class="card"><h1>' + esc(store.name || '') + ' さん</h1>' + err(msg) +
-      '<label for="pin">PIN（数字' + PIN_LEN + '桁）</label><input id="pin" type="password" inputmode="numeric" maxlength="' + PIN_LEN + '" autocomplete="current-password">' +
-      '<button class="primary" id="go">開く</button>' +
-      '<button class="link" id="forget">この端末の登録を解除する</button></div>';
-    var el = document.getElementById('pin');
-    el.focus();
-    el.onkeydown = function (e) { if (e.key === 'Enter') document.getElementById('go').click(); };
-    document.getElementById('go').onclick = function () { pin = el.value; showList(); };
-    document.getElementById('forget').onclick = forget;
-  }
-
-  function forget() {
-    if (!confirm('この端末の登録を解除しますか？もう一度見るには招待コードが必要になります。')) return;
-    busy();
-    call({ action: 'forget', token: store.token }).then(function () {
-      store = {}; save(store); pin = ''; showInvite();
-    });
-  }
-
-  function handleAuthError(r) {
-    if (r.error === 'invalid_token' || r.error === 'pin_reset') { store = {}; save(store); pin = ''; showInvite(r.message); return true; }
-    if (r.error === 'bad_pin' || r.error === 'locked' || r.error === 'no_consent' || r.error === 'inactive') { pin = ''; showPin(r.message); return true; }
-    return false;
-  }
-
-  // ---------- 一覧 ----------
-  function showList() {
-    busy();
-    call({ action: 'list', token: store.token, pin: pin }).then(function (r) {
-      if (!r.ok) { if (!handleAuthError(r)) showPin(r.message); return; }
-      cache = r;
-      var h = '<div class="card"><h1>' + esc(r.name) + ' さん</h1>';
-      h += '<div class="sec">給与明細</div><div class="list">';
-      h += r.slips.length ? r.slips.map(function (s) {
-        return '<button data-ym="' + esc(s.ym) + '"><span>' + esc(ymLabel(s.ym)) + '</span><span class="amt">差引 ' + yen(s.net) + '</span></button>';
-      }).join('') : '<p class="sub">まだありません。</p>';
-      h += '</div>';
-      if (r.gensen.length) {
-        h += '<div class="sec">源泉徴収票</div><div class="list">' + r.gensen.map(function (g) {
-          return '<button data-year="' + esc(g.year) + '"><span>' + esc('令和' + (g.year - 2018) + '年分（' + g.year + '年）') + '</span><span class="amt">›</span></button>';
-        }).join('') + '</div>';
-      }
-      if (r.houjin.length) {
-        h += '<div class="sec">業務報告書兼支払明細書（法人）</div><div class="list">' + r.houjin.map(function (x) {
-          return '<button data-hym="' + esc(x.ym) + '"><span>' + esc(ymLabel(x.ym)) + '</span><span class="amt">' + esc(x.state) + '　' + yen(x.amount) + '</span></button>';
-        }).join('') + '</div>';
-      }
-      h += '<button class="link" id="lock">閉じる（PINを入れ直す）</button></div>';
-      app.innerHTML = h;
-      Array.prototype.forEach.call(app.querySelectorAll('[data-ym]'), function (b) { b.onclick = function () { showDoc({ action: 'get', ym: b.getAttribute('data-ym') }); }; });
-      Array.prototype.forEach.call(app.querySelectorAll('[data-year]'), function (b) { b.onclick = function () { showDoc({ action: 'gensen', year: Number(b.getAttribute('data-year')) }); }; });
-      Array.prototype.forEach.call(app.querySelectorAll('[data-hym]'), function (b) { b.onclick = function () { showHoujin(b.getAttribute('data-hym')); }; });
-      document.getElementById('lock').onclick = function () { pin = ''; cache = null; showPin(); };
-    });
-  }
-
-  // ---------- 明細・源泉徴収票 ----------
-  function showDoc(req) {
-    busy();
-    req.token = store.token; req.pin = pin;
-    call(req).then(function (r) {
-      if (!r.ok) { if (!handleAuthError(r)) app.innerHTML = '<div class="card">' + err(r.message) + '<button class="ghost" id="back">戻る</button></div>'; bindBack(); return; }
-      app.innerHTML = '<div class="bar noprint"><button class="ghost" id="back">‹ 一覧</button><button class="ghost" id="dl">PDFをダウンロード</button><button class="ghost" id="print">印刷</button></div>' +
-        '<div class="card">' + r.html + '</div>';
-      bindBack();
-      document.getElementById('print').onclick = function () { window.print(); };
-      document.getElementById('dl').onclick = function () { downloadPdf(req); };
-    });
-  }
-  // 本人の分のPDFをGASで作って受け取り、端末に保存する
-  function downloadPdf(req) {
-    var b = document.getElementById('dl');
-    b.disabled = true; b.textContent = '作成中…';
-    var q = { action: 'pdf', token: store.token, pin: pin };
-    if (req.action === 'gensen') { q.kind = 'gensen'; q.year = req.year; } else { q.ym = req.ym; }
-    call(q).then(function (r) {
-      b.disabled = false; b.textContent = 'PDFをダウンロード';
-      if (!r.ok) { if (!handleAuthError(r)) alertBox(r.message || 'PDFを作れませんでした。'); return; }
-      var bin = atob(r.pdf), arr = new Uint8Array(bin.length);
-      for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-      var url = URL.createObjectURL(new Blob([arr], { type: 'application/pdf' }));
-      var a = document.createElement('a'); a.href = url; a.download = r.name; document.body.appendChild(a); a.click();
-      setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 4000);
-    });
-  }
-  function alertBox(msg) {
-    var c = app.querySelector('.card'); if (c) c.insertAdjacentHTML('afterbegin', err(msg));
-  }
-  function bindBack() { var b = document.getElementById('back'); if (b) b.onclick = showList; }
-
-  // ---------- 法人の請求書（当院が作成 → 承諾するだけ） ----------
-  function showHoujin(ym) {
-    busy();
-    call({ action: 'houjin_get', token: store.token, pin: pin, ym: ym }).then(function (r) {
-      if (!r.ok) { if (!handleAuthError(r)) { app.innerHTML = '<div class="card">' + err(r.message) + '<button class="ghost" id="back">戻る</button></div>'; bindBack(); } return; }
-      var waiting = r.state === '承諾待ち';
-      var h = '<div class="bar noprint"><button class="ghost" id="back">‹ 一覧</button><button class="ghost" id="print">印刷・PDFで保存</button></div>';
-      h += '<div class="card">' + r.html + '</div>';
-      if (waiting) {
-        h += '<div class="card noprint"><p class="sub">当院が作成した' + esc(ymLabel(ym)) + 'の業務報告書兼支払明細書です。内容でよければ「承諾する」を押してください。</p>' +
-          '<button class="primary" id="agree">この内容で承諾する（' + yen(r.amount) + '）</button>' +
-          '<button class="link" id="fix">直してほしい所がある</button></div>';
-      }
-      app.innerHTML = h;
-      bindBack();
-      document.getElementById('print').onclick = function () { window.print(); };
-      if (!waiting) return;
-      document.getElementById('agree').onclick = function () {
-        if (!confirm(ymLabel(ym) + 'の業務報告書兼支払明細書（' + yen(r.amount) + '）を承諾しますか？')) return;
-        busy();
-        call({ action: 'houjin_agree', token: store.token, pin: pin, ym: ym, amount: r.amount }).then(function (res) {
-          if (!res.ok && handleAuthError(res)) return;
-          if (!res.ok) alert(res.message);
-          showHoujin(ym);
-        });
-      };
-      document.getElementById('fix').onclick = function () {
-        var c = prompt('直してほしい所を書いてください（院長に届きます）');
-        if (!c) return;
-        busy();
-        call({ action: 'houjin_fix', token: store.token, pin: pin, ym: ym, comment: c }).then(function (res) {
-          if (!res.ok && handleAuthError(res)) return;
-          if (!res.ok) alert(res.message);
-          showHoujin(ym);
-        });
-      };
-    });
-  }
-
-  // ---------- 起動 ----------
-  if (!K) { app.innerHTML = '<div class="card">' + err('院長から届いたURLで開いてください。') + '</div>'; return; }
-  if (store.token) showPin(); else showInvite();
+  var k = new URLSearchParams(location.search).get('k') || '';
+  if (k) location.replace('../clock/?ks=' + encodeURIComponent(k));
 })();
 </script>
+</head>
+<body>
+<div class="card">
+  <p>給与明細は「職員ポータル」に移りました。</p>
+  <p>自動で移らないときは、院長から届いたURLか、休憩室のQRコードから開き直してください。</p>
+</div>
 </body>
 </html>

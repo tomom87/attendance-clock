@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>入職手続き｜西新井内科クリニック</title>
+<style>
+  :root { --g: #5d7828; --gl: #f3f8e8; --line: #d6d6d6; --tx: #222; --sub: #666; --red: #c62828; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: 'Hiragino Sans', 'Noto Sans JP', 'Meiryo', sans-serif; color: var(--tx); background: #f7f7f5; font-size: 16px; line-height: 1.6; }
+  header { background: var(--g); color: #fff; padding: 14px 16px; }
+  header h1 { margin: 0; font-size: 18px; }
+  header p { margin: 2px 0 0; font-size: 13px; opacity: .9; }
+  main { max-width: 640px; margin: 0 auto; padding: 12px 16px 120px; }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 14px 14px 16px; margin: 12px 0; }
+  .card h2 { font-size: 16px; margin: 0 0 8px; color: var(--g); }
+  .note { font-size: 13px; color: var(--sub); }
+  details summary { cursor: pointer; font-weight: bold; color: var(--g); padding: 4px 0; }
+  .ct { font-size: 13px; }
+  .pl { font-size: 13px; line-height: 1.7; max-height: 320px; overflow-y: auto; border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; background: #fff; }
+  .pl h3 { font-size: 13px; margin: 10px 0 2px; }
+  .pl p { margin: 2px 0; }
+  .pl .law { color: var(--sub); font-size: 12px; margin-top: 10px; }
+  .ct .row { border-top: 1px solid var(--line); padding: 8px 0; }
+  .ct .lab { font-weight: bold; font-size: 13px; color: #444; white-space: pre-line; }
+  .ct .ln { margin: 2px 0 2px 0; }
+  mark { background: #fff176; }
+  label.f { display: block; margin: 14px 0 4px; font-weight: bold; font-size: 14px; }
+  label.f .req { display: inline-block; font-size: 11px; color: #fff; background: var(--red); border-radius: 3px; padding: 0 5px; margin-left: 6px; vertical-align: 2px; }
+  input, select, textarea { width: 100%; font-size: 16px; padding: 10px 12px; border: 1px solid #bbb; border-radius: 8px; background: #fff; }
+  textarea { min-height: 90px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .two label.f { margin-top: 10px; }
+  .fixed { padding: 10px 12px; background: #f1f1f1; border-radius: 8px; }
+  .agree { display: flex; gap: 10px; align-items: flex-start; font-size: 15px; }
+  .agree input { width: 22px; height: 22px; margin-top: 3px; flex: none; }
+  .bar { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; border-top: 1px solid var(--line); padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); }
+  .bar .in { max-width: 640px; margin: 0 auto; display: flex; gap: 10px; }
+  button { flex: 1; font-size: 16px; padding: 13px; border-radius: 10px; border: 1px solid #999; background: #fff; }
+  button.primary { background: var(--g); border-color: var(--g); color: #fff; font-weight: bold; }
+  button:disabled { opacity: .5; }
+  .err { color: var(--red); font-size: 14px; white-space: pre-wrap; }
+  .fe { color: var(--red); font-size: 13px; margin-top: 2px; }
+  input.bad, select.bad { border-color: var(--red); background: #fff6f6; }
+  dl.rv { margin: 0; }
+  dl.rv dt { font-size: 12px; color: var(--sub); margin-top: 8px; }
+  dl.rv dd { margin: 0; font-size: 15px; word-break: break-all; }
+  .center { text-align: center; padding: 40px 0; }
+  .pinin { font-size: 28px; letter-spacing: 8px; text-align: center; }
+  .consent { white-space: pre-wrap; font-size: 14px; line-height: 1.7; background: #f3f3f0; border-radius: 8px; padding: 10px 12px; }
+  a.go { display: block; text-align: center; background: var(--g); color: #fff; font-weight: bold; padding: 13px; border-radius: 10px; text-decoration: none; margin-top: 12px; }
+</style>
+</head>
+<body>
+<header><h1>入職手続き</h1><p>西新井内科クリニック</p></header>
+<main id="main"><div class="center" id="loading">読み込み中…</div></main>
+<div class="bar" id="bar" hidden><div class="in" id="barIn"></div></div>
+
+<script>
+/*
+ * 入職手続きのフォーム（2026-11-05 GASの画面から GitHub Pages へ移した。旧 gas/nyusha/Form.html）
+ * GAS（勤怠打刻）の doPost に { app:'nyusha', fn, args } を送る。呼べる関数はGAS側（nyushaApi_）が決めている。
+ * 下の google.script.run は、その送り方を以前の画面と同じ書き方で使えるようにしたもの（テストではモックを先に入れる）。
+ * 送信のあと、電子交付への同意（乙欄の人）とPINを決めて、職員ポータル（clock/）へ進む。
+ */
+var GAS_URL = 'https://script.google.com/macros/s/AKfycbxOtEvv01yRsHhaOYrl1kt0jommKLKJ_tGXdS863oVfP5wUcVO8JwHBA6M4YVLquiqH/exec';
+var PORTAL_STORE = 'nishiarai.clock.v1';   // 職員ポータル（clock/）と同じ保存先
+if (!window.google || !window.google.script) {
+  window.google = { script: { get run() {
+    var ok = null, ng = null;
+    var p = new Proxy({}, { get: function(t, k) {
+      if (k === 'withSuccessHandler') return function(f) { ok = f; return p; };
+      if (k === 'withFailureHandler') return function(f) { ng = f; return p; };
+      return function() {
+        var args = Array.prototype.slice.call(arguments), o = ok, n = ng;
+        fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ app: 'nyusha', fn: k, args: args }) })
+          .then(function(r) { return r.json(); })
+          .then(function(r) { if (r.ok) { if (o) o(r.val); } else if (n) n({ message: r.err || 'エラー' }); })
+          .catch(function(e) { if (n) n({ message: '通信できませんでした' }); });
+      };
+    } });
+    return p;
+  } } };
+}
+var TOKEN = (new URLSearchParams(location.search).get('t') || '').replace(/[^0-9a-f]/g, '');
+if (TOKEN.length !== 40) TOKEN = '';
+try { history.replaceState(null, '', location.pathname + (TOKEN ? '?t=' + TOKEN : '')); } catch (e) {}
+var D = null, VALUES = {};
+var SEC = [
+  { id: 'basic', title: '1. お名前・生年月日' },
+  { id: 'contact', title: '2. 住所・連絡先' },
+  { id: 'house', title: '3. 世帯主' },
+  { id: 'emg', title: '4. 緊急連絡先' },
+  { id: 'license', title: '5. 免許・資格' },
+  { id: 'commute', title: '6. 通勤' },
+  { id: 'side', title: '7. 他の勤務先' },
+  { id: 'tax', title: '8. 税金・扶養' },
+  { id: 'bank', title: '9. 給与振込口座' },
+  { id: 'note', title: '10. 連絡事項' }
+];
+var KANA = /^[ぁ-ゟ゠-ヿー\s　]+$/;
+
+function el(tag, attrs, text) {
+  var e = document.createElement(tag);
+  if (attrs) Object.keys(attrs).forEach(function(k) { if (attrs[k] !== null && attrs[k] !== undefined && attrs[k] !== false) e.setAttribute(k, attrs[k]); });
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+function markText(parent, s) {
+  String(s).split(/(【[^】]*】)/).forEach(function(part) {
+    if (!part) return;
+    if (/^【[^】]*】$/.test(part)) parent.appendChild(el('mark', null, part));
+    else parent.appendChild(document.createTextNode(part));
+  });
+}
+function main() { return document.getElementById('main'); }
+function bar(buttons) {
+  var b = document.getElementById('bar'), i = document.getElementById('barIn');
+  i.innerHTML = '';
+  if (!buttons) { b.hidden = true; return; }
+  buttons.forEach(function(x) { i.appendChild(x); });
+  b.hidden = false;
+}
+function msgPage(title, text) {
+  main().innerHTML = '';
+  var c = el('div', { 'class': 'card' });
+  c.appendChild(el('h2', null, title));
+  c.appendChild(el('p', null, text));
+  main().appendChild(c);
+  bar(null);
+}
+
+google.script.run.withSuccessHandler(function(d) {
+  if (d.error) { msgPage('ご確認ください', d.error); return; }
+  D = d; renderForm();
+}).withFailureHandler(function(e) { msgPage('エラー', '読み込みに失敗しました。時間をおいて開き直してください。\n' + e.message); }).getFormData(TOKEN);
+
+function renderForm() {
+  var m = main(); m.innerHTML = '';
+
+  var intro = el('div', { 'class': 'card' });
+  intro.appendChild(el('h2', null, 'はじめに'));
+  intro.appendChild(el('p', null, (D.mode === '既存職員の書面化' ? 'あなたの雇用契約の内容を書面で確認するため、' : D.mode === '更新・条件変更' ? '雇用契約の更新・条件変更のため、' : '入職にあたり、') +
+    '雇用契約書（労働条件通知書 兼 雇用契約書）を作成します。下の「あなたの労働条件」をご確認のうえ、お名前・住所・連絡先などを入力してください。'));
+  intro.appendChild(el('p', { 'class': 'note' }, '入力いただいた情報は、雇用契約書の作成、労務・社会保険の手続き、給与の振込、緊急時の連絡のためにのみ利用し、院長が管理します。給与振込口座の入力にはキャッシュカードか通帳をご用意ください。マイナンバーは' + (D.mode === '新規採用' ? '入職日' : '次の出勤日') + 'に別途確認します（ここでは入力しません）。'));
+  if (D.jcOnly) {
+    intro.innerHTML = '';
+    intro.appendChild(el('h2', null, 'はじめに'));
+    intro.appendChild(el('p', null, '給与・労務管理システム（ジョブカン）への登録のため、お名前・住所・連絡先・給与振込口座などを入力してください。'));
+    intro.appendChild(el('p', { 'class': 'note' }, '入力いただいた情報は、労務・社会保険の手続きと給与の振込のためにのみ利用し、院長が管理します。給与振込口座の入力にはキャッシュカードか通帳をご用意ください。マイナンバーは別途確認します（ここでは入力しません）。'));
+  }
+  m.appendChild(intro);
+
+  var ct = el('div', { 'class': 'card' });
+  ct.appendChild(el('h2', null, 'あなたの労働条件（' + D.kindLabel + '）'));
+  var det = el('details'); det.open = false;
+  det.appendChild(el('summary', null, 'タップして全文を表示'));
+  var box = el('div', { 'class': 'ct' });
+  if (D.contract.lead) { var ld = el('div', { 'class': 'row' }); markText(ld, D.contract.lead); box.appendChild(ld); }
+  D.contract.rows.forEach(function(r) {
+    var row = el('div', { 'class': 'row' });
+    row.appendChild(el('div', { 'class': 'lab' }, r[0]));
+    r[1].forEach(function(line) { var d = el('div', { 'class': 'ln' }); markText(d, line); row.appendChild(d); });
+    box.appendChild(row);
+  });
+  det.appendChild(box);
+  ct.appendChild(det);
+  ct.appendChild(el('p', { 'class': 'note' }, '黄色の【　】は院長が記入する欄です。分からない点・違っている点があれば、送信前でも後でも院長にお尋ねください。'));
+  if (!D.jcOnly) m.appendChild(ct);
+
+  var secNo = 0;
+  SEC.forEach(function(s) {
+    var fs = D.fields.filter(function(f) { return f.sec === s.id; });
+    if (!fs.length) return;
+    var c = el('div', { 'class': 'card' });
+    c.appendChild(el('h2', null, (++secNo) + '. ' + s.title.replace(/^\d+\.\s*/, '')));
+    var grid = null;
+    fs.forEach(function(f, i) {
+      var pairStart = (f.key === 'last_name' || f.key === 'last_kana');
+      if (pairStart) { grid = el('div', { 'class': 'two' }); c.appendChild(grid); }
+      var holder = (grid && (pairStart || f.key === 'first_name' || f.key === 'first_kana')) ? el('div') : c;
+      if (holder !== c) grid.appendChild(holder);
+      field(holder, f);
+      if (f.key === 'first_name' || f.key === 'first_kana') grid = null;
+    });
+    if (s.id === 'house') c.appendChild(el('p', { 'class': 'note' }, '住民票の世帯主です。ご自身が世帯主なら続柄に「本人」と入力してください。'));
+    if (s.id === 'commute') c.appendChild(el('p', { 'class': 'note' }, '通勤手当は公共交通機関の運賃のみです。公共交通機関を使う方は、片道の運賃と1か月の定期代を入力してください。'));
+    if (s.id === 'tax') c.appendChild(el('p', { 'class': 'note' }, '税額表の区分：他に勤務先がない方、または当院がメインの勤務先の方は「甲」です。他の勤務先に「扶養控除等申告書」を出している方は「乙」です。扶養している家族は、税金または健康保険上の扶養家族のことです。'));
+    if (s.id === 'bank' && D.jcOnly) c.appendChild(el('p', { 'class': 'note' }, '当院で把握済みのため必須ではありませんが、確認のためできるだけ入力してください（変更がある場合は必ず入力してください）。'));
+    if (s.id === 'bank') c.appendChild(el('p', { 'class': 'note' }, 'ご本人名義の口座に限ります。ゆうちょ銀行の場合は、通帳の「記号・番号」ではなく振込用の店名・口座番号（7桁）を入力してください（通帳の見開きなどに記載）。'));
+    if (s.id === 'side') c.appendChild(el('p', { 'class': 'note' }, D.sideRequired
+      ? '他の医療機関等でも勤務している場合は、労働時間を合算して管理する必要があるため、勤務先・曜日・時間を入力してください。'
+      : '他の勤務先がある場合は、勤務先・曜日・時間を入力してください。'));
+    m.appendChild(c);
+  });
+
+  // 守秘義務・個人情報保護誓約書（全文を表示して同意をもらう）
+  var pc = el('div', { 'class': 'card' });
+  pc.appendChild(el('h2', null, D.pledge.title));
+  var pbox = el('div', { 'class': 'pl' });
+  pbox.appendChild(el('p', null, D.pledge.to));
+  pbox.appendChild(el('p', null, D.pledge.intro));
+  D.pledge.items.forEach(function(it) {
+    pbox.appendChild(el('h3', null, it[0]));
+    it[1].forEach(function(l) { pbox.appendChild(el('p', null, l)); });
+  });
+  pbox.appendChild(el('p', null, D.pledge.closing));
+  pbox.appendChild(el('p', { 'class': 'law' }, D.pledge.laws));
+  pc.appendChild(pbox);
+  var plab = el('label', { 'class': 'agree' });
+  var pcb = el('input', { type: 'checkbox', id: 'pledge' });
+  pcb.checked = !!VALUES.pledge;
+  plab.appendChild(pcb);
+  plab.appendChild(el('span', null, '上記の誓約書の内容を確認し、遵守することを誓約します。'));
+  pc.appendChild(el('div', { style: 'height:10px' }));
+  pc.appendChild(plab);
+  pc.appendChild(el('p', { 'class': 'note' }, D.esign
+    ? 'お名前を印字した誓約書を作成します。電子署名か、出勤日の自署でお願いします（院長からご案内します）。'
+    : (D.mode === '新規採用' ? '入職日' : '次の出勤日') + 'に、お名前を印字した誓約書をお渡ししますので、自署をお願いします。'));
+  if (!D.jcOnly) m.appendChild(pc);
+
+  // 契約書の受け取り・締結の方法（電子署名の招待のときだけ選べる）
+  if (D.esign && !D.jcOnly) {
+    var dc = el('div', { 'class': 'card' });
+    dc.appendChild(el('h2', null, '契約書の受け取り方法'));
+    [['電子', 'メールで受け取り、電子署名（Googleの電子署名）で契約を結ぶ'], ['紙', '紙で受け取り、署名・押印で契約を結ぶ']].forEach(function(o) {
+      var l = el('label', { 'class': 'agree', style: 'margin:8px 0' });
+      var r = el('input', { type: 'radio', name: 'delivery', value: o[0] });
+      r.checked = VALUES.delivery === o[0];
+      r.addEventListener('change', syncDelivery);
+      l.appendChild(r); l.appendChild(el('span', null, o[1]));
+      dc.appendChild(l);
+    });
+    var ec = el('label', { 'class': 'agree', id: 'econsentBox', style: 'margin-top:10px' });
+    var ecb = el('input', { type: 'checkbox', id: 'e_consent' });
+    ecb.checked = !!VALUES.e_consent;
+    ec.appendChild(ecb);
+    ec.appendChild(el('span', null, '労働条件通知書（この契約書）を電子メールで受け取り、電子署名で契約を結ぶことを希望します。受け取ったPDFを保存・印刷できる環境があります。'));
+    dc.appendChild(ec);
+    dc.appendChild(el('p', { 'class': 'note' }, '電子を選ぶと、送信後に院長が登録したあなたのメールアドレスへ、署名前の契約書（PDF）と、Googleからの署名依頼が届きます。署名が終わると署名済みのPDFが届きますので、保存してください。電子での受け取りは、あなたが希望した場合に限ります。紙を選んでも不利益はありません。'));
+    m.appendChild(dc);
+  }
+
+  var ag = el('div', { 'class': 'card' });
+  var lab = el('label', { 'class': 'agree' });
+  var cb = el('input', { type: 'checkbox', id: 'agree' });
+  cb.checked = !!VALUES.agree;
+  lab.appendChild(cb);
+  // 既存職員：いまの雇用契約は署名前から存在する。本書で行うのは従前条件の確認・変更の合意（再レビュー Form.html:218）
+  lab.appendChild(el('span', null, '上記「あなたの労働条件」の内容を確認しました。' + (D.mode === '新規採用'
+    ? '（契約は、このあと作成する契約書への署名で結びます）'
+    : '（いまの雇用契約はそのまま続いています。本書による従前の条件の確認と、変更事項への合意は、このあと作成する書面への署名で行います）')));
+  if (!D.jcOnly) {
+    ag.appendChild(lab);
+    ag.appendChild(el('p', { 'class': 'note', id: 'signNote' }, ''));
+  }
+  ag.appendChild(el('div', { 'class': 'err', id: 'err' }));
+  m.appendChild(ag);
+
+  var go = el('button', { 'class': 'primary', type: 'button' }, '入力内容の確認へ');
+  go.addEventListener('click', toReview);
+  bar([go]);
+  toggleSide();
+  syncDelivery();
+}
+
+function deliveryChoice() {
+  var r = document.querySelector('input[name=delivery]:checked');
+  return r ? r.value : '';
+}
+function syncDelivery() {
+  var box = document.getElementById('econsentBox');
+  var d = deliveryChoice();
+  if (box) box.style.display = d === '電子' ? '' : 'none';
+  var n = document.getElementById('signNote');
+  if (!n) return;
+  var day = D.mode === '新規採用' ? '入職日' : '次の出勤日';
+  n.textContent = (D.esign && d === '電子')
+    ? '送信後、署名前の契約書（PDF）と、Googleからの電子署名の依頼がメールで届きます。内容を確認して署名してください。'
+    : '契約書は' + day + 'に紙で2部お渡しし、署名・押印をいただきます。';
+}
+
+function field(parent, f) {
+  var lab = el('label', { 'class': 'f', 'for': 'f_' + f.key }, f.label);
+  if (f.req) lab.appendChild(el('span', { 'class': 'req' }, '必須'));
+  parent.appendChild(lab);
+  var inp;
+  if (f.type === 'fixed') {
+    parent.appendChild(el('div', { 'class': 'fixed' }, f.value));
+    return;
+  } else if (f.opts) {
+    inp = el('select', { id: 'f_' + f.key });
+    inp.appendChild(el('option', { value: '' }, '選んでください'));
+    f.opts.forEach(function(o) { inp.appendChild(el('option', { value: o }, o)); });
+  } else if (f.type === 'textarea') {
+    inp = el('textarea', { id: 'f_' + f.key, placeholder: f.ph });
+  } else {
+    var ty = { date: 'date', tel: 'tel', email: 'email', number: 'number' }[f.type] || 'text';
+    inp = el('input', { id: 'f_' + f.key, type: ty, placeholder: f.ph,
+      inputmode: f.type === 'number' ? 'numeric' : (f.key === 'zip' ? 'numeric' : null),
+      autocomplete: { last_name: 'family-name', first_name: 'given-name', zip: 'postal-code', address: 'street-address', tel: 'tel', email: 'email' }[f.key] || null });
+  }
+  if (VALUES[f.key]) inp.value = VALUES[f.key];
+  if (f.key === 'side_job') inp.addEventListener('change', toggleSide);
+  parent.appendChild(inp);
+  parent.appendChild(el('div', { 'class': 'fe', id: 'e_' + f.key }));
+}
+
+function toggleSide() {
+  var s = document.getElementById('f_side_job'), d = document.getElementById('f_side_job_detail');
+  if (!s || !d) return;
+  var on = s.value === 'あり';
+  d.disabled = !on;
+  d.parentNode.querySelector('label[for=f_side_job_detail]').style.opacity = on ? 1 : .5;
+}
+
+function readAll() {
+  var errs = [];
+  D.fields.forEach(function(f) {
+    if (f.type === 'fixed') { VALUES[f.key] = f.value; return; }
+    var inp = document.getElementById('f_' + f.key);
+    var v = (inp.value || '').trim();
+    if (f.key === 'side_job_detail' && VALUES.side_job !== 'あり') v = '';
+    if (f.key === 'household_name' && VALUES.household_rel === '本人') v = '';
+    if (f.key === 'bank_holder') {   // ひらがなで入れてもカタカナに直す
+      v = v.replace(/[ぁ-ゖ]/g, function(ch) { return String.fromCharCode(ch.charCodeAt(0) + 0x60); });
+      inp.value = v;
+    }
+    VALUES[f.key] = v;
+    var msg = '';
+    var req = f.req || (f.key === 'side_job_detail' && VALUES.side_job === 'あり') ||
+      (f.key === 'household_name' && VALUES.household_rel && VALUES.household_rel !== '本人') ||
+      (D.jcOnly && f.key === 'bank_agree' && !!(VALUES.bank_no || VALUES.bank_name));
+    if (req && !v) msg = '入力してください';
+    else if (v && f.pattern && !(new RegExp(f.pattern)).test(v)) msg = f.key === 'bank_holder' ? 'カタカナで入力してください' : f.key === 'bank_no' ? '7桁の数字で入力してください' : '形式を確認してください';
+    else if (v && f.kana && !KANA.test(v)) msg = 'ふりがなで入力してください';
+    var e = document.getElementById('e_' + f.key);
+    if (e) e.textContent = msg;
+    inp.classList.toggle('bad', !!msg);
+    if (msg) errs.push(f.label);
+  });
+  if (!D.jcOnly) {
+    VALUES.pledge = document.getElementById('pledge').checked;
+    if (!VALUES.pledge) errs.push('守秘義務・個人情報保護誓約書への同意');
+    VALUES.agree = document.getElementById('agree').checked;
+    if (!VALUES.agree) errs.push('労働条件の確認チェック');
+    if (D.esign) {
+      VALUES.delivery = deliveryChoice();
+      VALUES.e_consent = VALUES.delivery === '電子' && document.getElementById('e_consent').checked;
+      if (!VALUES.delivery) errs.push('契約書の受け取り方法');
+      else if (VALUES.delivery === '電子' && !VALUES.e_consent) errs.push('電子での受け取りの確認チェック');
+    }
+  }
+  return errs;
+}
+
+function toReview() {
+  var errs = readAll();
+  if (errs.length) {
+    document.getElementById('err').textContent = '次の項目を確認してください：' + errs.join('、');
+    var first = document.querySelector('.bad'); if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+  var m = main(); m.innerHTML = '';
+  var c = el('div', { 'class': 'card' });
+  c.appendChild(el('h2', null, '入力内容の確認'));
+  var dl = el('dl', { 'class': 'rv' });
+  D.fields.forEach(function(f) {
+    if (f.key === 'side_job_detail' && VALUES.side_job !== 'あり') return;
+    if (f.key === 'household_name' && VALUES.household_rel === '本人') return;
+    dl.appendChild(el('dt', null, f.label));
+    dl.appendChild(el('dd', null, VALUES[f.key] || '—'));
+  });
+  if (!D.jcOnly) {
+    dl.appendChild(el('dt', null, '守秘義務・個人情報保護誓約書'));
+    dl.appendChild(el('dd', null, VALUES.pledge ? '誓約する' : '—'));
+    if (D.esign) {
+      dl.appendChild(el('dt', null, '契約書の受け取り方法'));
+      dl.appendChild(el('dd', null, VALUES.delivery === '電子' ? 'メールで受け取り、電子署名で結ぶ' : '紙で受け取り、署名・押印で結ぶ'));
+    }
+  }
+  c.appendChild(dl);
+  c.appendChild(el('p', { 'class': 'note' }, D.jcOnly ? '送信には10秒ほどかかります。' : '送信後、契約書と誓約書を作成するため20秒ほどかかります。'));
+  c.appendChild(el('div', { 'class': 'err', id: 'err' }));
+  m.appendChild(c);
+  window.scrollTo(0, 0);
+  var back = el('button', { type: 'button' }, '修正する');
+  back.addEventListener('click', function() { renderForm(); window.scrollTo(0, 0); });
+  var send = el('button', { 'class': 'primary', type: 'button' }, 'この内容で送信');
+  send.addEventListener('click', function() {
+    send.disabled = true; back.disabled = true; send.textContent = '送信中…';
+    var payload = {}; Object.keys(VALUES).forEach(function(k) { payload[k] = VALUES[k]; });
+    google.script.run.withSuccessHandler(function(r) {
+      if (r.ok && r.portal) { finishScreen(); return; }
+      if (r.ok) {
+        var day = D.mode === '新規採用' ? '入職日' : '次の出勤日';
+        msgPage('送信しました', D.jcOnly ? 'ありがとうございました。入力内容をもとに登録を進めます。このページは閉じて構いません。'
+          : r.esign ? 'ありがとうございました。雇用契約書を作成しました。署名前の契約書（PDF）をメールでお送りしました。このあとGoogleから電子署名の依頼メールが届きますので、内容を確認して署名をお願いします。このページは閉じて構いません。'
+          : 'ありがとうございました。入力内容をもとに雇用契約書を作成します。' + day + 'に紙の契約書と誓約書をお渡ししますので、署名・押印をお願いします。このページは閉じて構いません。');
+        return;
+      }
+      send.disabled = false; back.disabled = false; send.textContent = 'この内容で送信';
+      document.getElementById('err').textContent = r.error;
+    }).withFailureHandler(function(e) {
+      send.disabled = false; back.disabled = false; send.textContent = 'この内容で送信';
+      document.getElementById('err').textContent = '送信に失敗しました。通信状況を確認してもう一度お試しください。（' + e.message + '）';
+    }).submitForm(TOKEN, payload);
+  });
+  bar([back, send]);
+}
+
+// ---------- 送信のあと：電子交付への同意（乙欄の人）→ PIN → 職員ポータル（2026-11-05） ----------
+function doneMessage() {
+  var day = D && D.mode === '新規採用' ? '入職日' : '次の出勤日';
+  if (D && D.jcOnly) return 'ありがとうございました。入力内容をもとに登録を進めます。';
+  if (D && D.esign) return 'ありがとうございました。雇用契約書を作成しました。署名前の契約書（PDF）をメールでお送りしました。このあとGoogleから電子署名の依頼メールが届きますので、内容を確認して署名をお願いします。';
+  return 'ありがとうございました。入力内容をもとに雇用契約書を作成します。' + day + 'に紙の契約書と誓約書をお渡ししますので、署名・押印をお願いします。';
+}
+function finishScreen(msg) {
+  main().innerHTML = ''; bar(null);
+  var c = el('div', { 'class': 'card' });
+  c.appendChild(el('h2', null, '送信しました'));
+  c.appendChild(el('p', null, doneMessage()));
+  main().appendChild(c);
+  var w = el('div', { 'class': 'card', id: 'fin' });
+  w.appendChild(el('p', { 'class': 'note' }, '読み込み中…'));
+  main().appendChild(w);
+  google.script.run.withSuccessHandler(function(r) {
+    w.innerHTML = '';
+    if (!r.ok) { w.appendChild(el('p', { 'class': 'err' }, r.message || r.error)); return; }
+    if (r.already) {
+      w.appendChild(el('h2', null, '職員ポータル'));
+      w.appendChild(el('p', null, 'すでに登録済みです。いつもの職員ポータル（打刻の画面）から、給与明細・契約書などを見られます。このページは閉じて構いません。'));
+      return;
+    }
+    w.appendChild(el('h2', null, '最後に：職員ポータルの登録'));
+    w.appendChild(el('p', null, '給与明細・源泉徴収票・契約書などを見るための「職員ポータル」に、この端末を登録します。'));
+    var cb = null;
+    if (r.setupProblem) w.appendChild(el('p', { 'class': 'err' }, r.setupMessage));
+    if (r.askConsent) {
+      w.appendChild(el('p', { 'class': 'note' }, '給与明細・源泉徴収票の電子交付について'));
+      w.appendChild(el('div', { 'class': 'consent' }, r.consentText));
+      var lab = el('label', { 'class': 'agree' });
+      cb = el('input', { type: 'checkbox', id: 'p_agree' });
+      lab.appendChild(cb);
+      lab.appendChild(el('span', null, '給与支払明細書と源泉徴収票を、この画面（電磁的方法）で受け取ることに同意します（同意しない場合はチェックしないでください。紙でお渡しします）。'));
+      w.appendChild(lab);
+    }
+    w.appendChild(el('label', { 'class': 'f', 'for': 'p1' }, 'PIN（数字4桁・自分で決める）'));
+    var p1 = el('input', { id: 'p1', type: 'password', inputmode: 'numeric', maxlength: '4', autocomplete: 'new-password', 'class': 'pinin' });
+    w.appendChild(p1);
+    w.appendChild(el('label', { 'class': 'f', 'for': 'p2' }, 'PIN（確認のためもう一度）'));
+    var p2 = el('input', { id: 'p2', type: 'password', inputmode: 'numeric', maxlength: '4', autocomplete: 'new-password', 'class': 'pinin' });
+    w.appendChild(p2);
+    w.appendChild(el('p', { 'class': 'note' }, '同じ数字の並びや連番（1234など）は使えません。PINは他人に教えないでください。'));
+    var er = el('div', { 'class': 'err', id: 'perr' }, msg || '');
+    w.appendChild(er);
+    var go = el('button', { 'class': 'primary', type: 'button', id: 'pgo' }, '登録する');
+    w.appendChild(go);
+    go.addEventListener('click', function() {
+      if (!/^\d{4}$/.test(p1.value)) { er.textContent = 'PINは数字4桁にしてください。'; return; }
+      if (p1.value !== p2.value) { er.textContent = '2回入れたPINが合いません。'; return; }
+      go.disabled = true; go.textContent = '登録中…';
+      google.script.run.withSuccessHandler(function(x) {
+        if (!x.ok) { go.disabled = false; go.textContent = '登録する'; er.textContent = x.message || x.error; return; }
+        var st = {};
+        try { st = JSON.parse(localStorage.getItem(PORTAL_STORE) || '{}') || {}; } catch (e) { st = {}; }
+        st.token = x.token; st.name = x.name;
+        if (x.k) st.k = x.k;
+        if (x.ks) st.ks = x.ks;
+        var kept = false;
+        try { localStorage.setItem(PORTAL_STORE, JSON.stringify(st)); kept = true; } catch (e) {}
+        w.innerHTML = '';
+        w.appendChild(el('h2', null, '登録しました'));
+        w.appendChild(el('p', null, kept ? x.name + 'さんの職員ポータルを登録しました。次のボタンから開けます（ホーム画面に追加しておくと便利です）。'
+          : 'この端末では登録を覚えておけませんでした（プライベートブラウズなど）。院長に伝えてください。'));
+        if (x.consent === false) w.appendChild(el('p', { 'class': 'err', id: 'pcons' }, x.consentMessage));   // 同意を記録できなかった（R3-06）
+        if (kept) {
+          var a = el('a', { 'class': 'go', href: '../clock/' + (x.k ? '?k=' + encodeURIComponent(x.k) : '?ks=' + encodeURIComponent(x.ks || '')) }, '職員ポータルを開く');
+          w.appendChild(a);
+        }
+      }).withFailureHandler(function(e) {
+        go.disabled = false; go.textContent = '登録する'; er.textContent = '通信できませんでした。もう一度押してください。（' + e.message + '）';
+      }).finish(TOKEN, p1.value, !!(cb && cb.checked));
+    });
+  }).withFailureHandler(function(e) {
+    w.innerHTML = ''; w.appendChild(el('p', { 'class': 'err' }, '読み込めませんでした。（' + e.message + '）'));
+  }).finishInfo(TOKEN);
+}
+</script>
+</body>
+</html>
