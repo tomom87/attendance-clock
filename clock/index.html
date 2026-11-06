@@ -75,8 +75,8 @@ if (/\/slip\//.test(location.pathname)) document.title = '職員ポータル';
   .consent { white-space: pre-wrap; font-size: 14px; line-height: 1.7; background: var(--bg); border-radius: 12px; padding: 12px; text-align: left; }
   .check { display: flex; gap: 10px; align-items: flex-start; font-size: 15px; margin-top: 12px; text-align: left; }
   .check input { width: 22px; height: 22px; margin-top: 2px; flex: none; }
-  .bar { display: flex; gap: 8px; justify-content: space-between; margin-bottom: 12px; }
-  .bar button { width: auto; background: #fff; border: 2px solid var(--line); color: var(--ink); font-size: 15px; font-weight: 600; padding: 10px 12px; }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; margin-bottom: 12px; }
+  .bar button { width: auto; background: #fff; border: 2px solid var(--line); color: var(--ink); font-size: 14px; font-weight: 600; padding: 8px 10px; white-space: nowrap; }
   .doc { text-align: left; }
   .wrap.wide { max-width: 600px; }
   @media print { body { background: #fff; padding: 0; } .noprint, .brand { display: none !important; } .card { box-shadow: none; padding: 0; } }
