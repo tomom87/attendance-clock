@@ -155,7 +155,15 @@ function renderForm() {
     if (ask.length) intro.appendChild(el('p', null, '源泉徴収票などに使うため、当院でまだ登録していない「' + ask.filter(function (x, i, a) { return a.indexOf(x) === i; }).join('・') + '」だけ入力してください。'));
     intro.appendChild(el('p', null, '下の「あなたの労働条件」を確認し、誓約書と受け取り方法を選んで送信してください。送信のあと、給与明細の電子交付への同意と、職員ポータルの登録（PINを決める）をお願いします。'));
   }
-  if (D.jcOnly) {
+  if (D.basicOnly) {
+    // 基本情報だけ（2026-11-06）：契約書・ジョブカンの登録はなし
+    intro.innerHTML = '';
+    intro.appendChild(el('h2', null, 'はじめに'));
+    var askB = D.fields.filter(function (f) { return f.type !== 'fixed'; }).map(function (f) { return f.kana ? 'ふりがな' : f.label.replace(/（.*?）/g, ''); })
+      .filter(function (x, i, a) { return a.indexOf(x) === i; });
+    intro.appendChild(el('p', null, askB.length ? '源泉徴収票などに使うため、当院でまだ登録していない「' + askB.join('・') + '」を入力して送信してください。' : 'お名前を確認して送信してください。'));
+    intro.appendChild(el('p', null, '送信のあと、給与明細の電子交付への同意と、職員ポータルの登録（PINを決める）をお願いします。'));
+  } else if (D.jcOnly) {
     intro.innerHTML = '';
     intro.appendChild(el('h2', null, 'はじめに'));
     intro.appendChild(el('p', null, '給与・労務管理システム（ジョブカン）への登録のため、お名前・住所・連絡先・給与振込口座などを入力してください。'));
@@ -424,6 +432,7 @@ function toReview() {
 // ---------- 送信のあと：電子交付への同意（乙欄の人）→ PIN → 職員ポータル（2026-11-05） ----------
 function doneMessage() {
   var day = D && D.mode === '新規採用' ? '入職日' : '次の出勤日';
+  if (D && D.basicOnly) return 'ありがとうございました。登録しました。';
   if (D && D.jcOnly) return 'ありがとうございました。入力内容をもとに登録を進めます。';
   if (D && D.esign) return 'ありがとうございました。雇用契約書を作成しました。署名前の契約書（PDF）をメールでお送りしました。このあとGoogleから電子署名の依頼メールが届きますので、内容を確認して署名をお願いします。';
   return 'ありがとうございました。入力内容をもとに雇用契約書を作成します。' + day + 'に紙の契約書と誓約書をお渡ししますので、署名・押印をお願いします。';
