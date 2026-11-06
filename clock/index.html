@@ -222,7 +222,7 @@ if (/\/slip\//.test(location.pathname)) document.title = '職員ポータル';
       card.innerHTML = '<h1>院長から届いたURLから開いてください</h1><p class="sub">職員ポータルは、院長から届いたURL（メール・入職手続きの最後の画面など）から開いてください。</p>';
       return;
     }
-    if (store.token) portalPin(); else inviteScreen();
+    if (store.token) portalPin(); else portalEntry();
   }
 
   /** 招待リンクの # の後ろの c=（招待コード）。無ければ空 */
@@ -560,7 +560,7 @@ if (/\/slip\//.test(location.pathname)) document.title = '職員ポータル';
     if (t && t.parentNode) t.parentNode.removeChild(t);
     card.innerHTML = '';
     wide(false);
-    if (store.token) portalPin(msg || ''); else inviteScreen();
+    if (store.token) portalPin(msg || ''); else portalEntry();
     return true;
   }
   function pinToast(text) {
@@ -609,12 +609,12 @@ if (/\/slip\//.test(location.pathname)) document.title = '職員ポータル';
     ppin = '';
     if (siteKey && store.token) return loadStatus();
     if (store.token) return portalPin();
-    return siteKey ? loadRoster() : inviteScreen();
+    return siteKey ? loadRoster() : portalEntry();
   }
 
   function portalPin(msg) {
     if (!PORTAL_MODE) return portalElsewhere();   // 打刻専用の画面からは職員ポータルを開かない
-    if (!store.token) return inviteScreen(msg);
+    if (!store.token) return portalEntry(msg);
     padScreen({ title: 'PINを入力', subHtml: esc(store.name || '') + 'さんのPIN（数字4桁）を入れてください。<br>給与明細・契約書などを開きます。',
       msg: msg, onDone: function (pin) { ppin = pin; lastAct = Date.now(); portalHome(); },
       // 登録済みの端末で招待リンクを開いたとき：招待コードは使わずPINを聞く。PINを忘れた・別の人の登録のときだけ、本人が押して登録し直せる（自動では使わない）
@@ -629,7 +629,7 @@ if (/\/slip\//.test(location.pathname)) document.title = '職員ポータル';
     if (r.error === 'bad_pin') { ppin = ''; portalPin(r.message); return true; }
     if (r.error === 'locked') { ppin = ''; showError(r.message, null); return true; }
     if (r.error === 'need_invite') { ppin = ''; inviteScreen(r.message); return true; }
-    if (r.error === 'invalid_token') { ppin = ''; delete store.token; delete store.name; saveStore(); if (siteKey) loadRoster(); else inviteScreen(r.message); return true; }
+    if (r.error === 'invalid_token') { ppin = ''; delete store.token; delete store.name; saveStore(); if (siteKey) loadRoster(); else portalEntry(r.message); return true; }
     if (r.error === 'no_consent') { portalHome(); return true; }
     showError(r.message || r.error, retry || null);
     return true;
@@ -686,11 +686,11 @@ if (/\/slip\//.test(location.pathname)) document.title = '職員ポータル';
     };
     document.getElementById('plock').onclick = function () { lockPortal(''); };
     if ((b = document.getElementById('pforget'))) b.onclick = function () {
-      if (!confirm('この端末の登録（' + (store.name || '') + 'さん）を解除しますか？もう一度使うには院長の招待コードが要ります。')) return;
+      if (!confirm('この端末の登録（' + (store.name || '') + 'さん）を解除しますか？もう一度使うときは、氏名とPINで入り直してください。')) return;
       var tk = store.token;
       delete store.token; delete store.name; saveStore(); ppin = ''; pgen++;
       papi({ action: 'forget', token: tk }).catch(function () {});
-      inviteScreen();
+      portalEntry();
     };
   }
 
@@ -828,6 +828,45 @@ if (/\/slip\//.test(location.pathname)) document.title = '職員ポータル';
   }
 
   // ---------- 招待コード（院長が発行・1回限り・72時間）で登録 ----------
+  /** 職員ポータルで未登録の端末の入口：招待リンクなら招待コード、それ以外は氏名とPIN（2026-11-06） */
+  function portalEntry(msg) {
+    if (PORTAL_MODE && !linkCode) return loginScreen(msg);
+    inviteScreen(msg);
+  }
+
+  /** 氏名＋PINでこの端末を登録して入る（1人5台まで。登録すると本人にメール） */
+  function loginScreen(msg, name) {
+    clearTimers(); wide(false); ppin = '';
+    card.innerHTML = '<h1>職員ポータル</h1>' + (msg ? '<div class="warn">' + esc(msg) + '</div>' : '') +
+      '<p class="sub">氏名（フルネーム）とPIN（数字4桁）で入ります。<br>この端末を登録します（1人5台まで）。</p>' +
+      '<input type="text" class="textin" id="lname" autocomplete="name" placeholder="例：西新井 花子" value="' + esc(name || '') + '">' +
+      '<div id="lErr"></div>' +
+      '<button class="main c-出勤" id="lNext">次へ</button>' +
+      '<button class="link" id="lInvite">はじめての方・PINを決め直す方（招待コード）</button>';
+    document.getElementById('lInvite').onclick = function () { inviteScreen(); };
+    document.getElementById('lNext').onclick = function () {
+      var nm = document.getElementById('lname').value.trim();
+      if (nm.replace(/[\s\u3000]/g, '').length < 2) { document.getElementById('lErr').innerHTML = '<div class="error">氏名を入れてください。</div>'; return; }
+      padScreen({ title: 'PINを入力', subHtml: esc(nm) + 'さんのPIN（数字4桁）を入れてください。',
+        onBack: function () { loginScreen('', nm); },
+        onDone: function (pin) {
+          loading('確認中…');
+          var g0 = pgen;
+          papi({ action: 'login', name: nm, pin: pin, ua: String(navigator.userAgent || '').slice(0, 120) }).then(function (r) {
+            if (!r.ok) {
+              if (r.error === 'need_invite') return inviteScreen(r.message);
+              if (r.error === 'locked' || r.error === 'stopped' || r.error === 'not_linked' || r.error === 'setup') return showError(r.message, null);
+              return loginScreen(r.message || r.error, nm);
+            }
+            store.token = r.token; store.name = r.name;
+            if (!saveStore()) { showError('この端末では登録を覚えておけません（プライベートブラウズなど）。普段のブラウザで開き直してください。', null); return; }
+            if (g0 !== pgen || document.visibilityState === 'hidden') return portalPin('登録しました。続けるときはPINを入れてください。');
+            ppin = pin; lastAct = Date.now(); portalHome();
+          }).catch(function () { netError(function () { loginScreen('', nm); }); });
+        } });
+    };
+  }
+
   function inviteScreen(msg) {
     clearTimers(); wide(false); ppin = '';
     if (!siteKey && !slipKey) {
@@ -841,7 +880,8 @@ if (/\/slip\//.test(location.pathname)) document.title = '職員ポータル';
       '<input type="text" class="textin" id="code" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="例：ABCD2345EF" value="' + esc(pre) + '">' +
       '<div id="invErr"></div>' +
       '<button class="main c-出勤" id="invNext">次へ</button>' +
-      (siteKey ? '<button class="link" id="invBack">名前の一覧に戻る</button>' : '');
+      (siteKey ? '<button class="link" id="invBack">名前の一覧に戻る</button>' : '') +
+      (PORTAL_MODE ? '<button class="link" id="invLogin">登録済みの方は、氏名とPINで入る</button>' : '');
     document.getElementById('invNext').onclick = function () {
       var code = document.getElementById('code').value.replace(/[\s-]/g, '').toUpperCase();
       if (!/^[A-Z0-9]{8,16}$/.test(code)) { document.getElementById('invErr').innerHTML = '<div class="error">招待コードを確かめてください。</div>'; return; }
@@ -853,6 +893,8 @@ if (/\/slip\//.test(location.pathname)) document.title = '職員ポータル';
     };
     var b = document.getElementById('invBack');
     if (b) b.onclick = loadRoster;
+    var bl = document.getElementById('invLogin');
+    if (bl) bl.onclick = function () { linkCode = ''; loginScreen(); };
   }
 
   function inviteConfirm(code, info) {

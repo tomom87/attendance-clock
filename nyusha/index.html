@@ -193,7 +193,17 @@ function renderForm() {
     var fs = D.fields.filter(function(f) { return f.sec === s.id; });
     if (!fs.length) return;
     var c = el('div', { 'class': 'card' });
-    c.appendChild(el('h2', null, (++secNo) + '. ' + s.title.replace(/^\d+\.\s*/, '')));
+    // 簡易手続き・基本情報だけ：見出しは実際にある欄だけで作る（2026-11-06 院長：「お名前・生年月日」なのに生年月日の欄が無い）
+    var title = s.title.replace(/^\d+\.\s*/, '');
+    if (D.quick) {
+      var parts = [];
+      fs.forEach(function (f) {
+        var nm = (f.key === 'last_name' || f.key === 'first_name') ? 'お名前' : f.kana ? 'ふりがな' : f.label.replace(/（.*?）/g, '');
+        if (parts.indexOf(nm) < 0) parts.push(nm);
+      });
+      title = parts.join('・');
+    }
+    c.appendChild(el('h2', null, (++secNo) + '. ' + title));
     var grid = null;
     fs.forEach(function(f, i) {
       var pairStart = (f.key === 'last_name' || f.key === 'last_kana');
