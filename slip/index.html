@@ -599,7 +599,8 @@ if (/\/slip\//.test(location.pathname)) document.title = '職員ポータル';
         if (b.dataset.f === 'del') { digits = digits.slice(0, -1); return paint(); }
         if (digits.length >= 4) return;
         digits += b.dataset.n; paint();
-        if (digits.length === 4) setTimeout(function () { o.onDone(digits); }, 150);
+        // 4桁目のあと150msで進む。その間に画面を離れた（非表示・閉じる）ら進めない（レビュー5回目 R5-04）
+        if (digits.length === 4) { var g4 = pgen; setTimeout(function () { if (g4 === pgen) o.onDone(digits); }, 150); }
       };
     });
   }
@@ -882,6 +883,7 @@ if (/\/slip\//.test(location.pathname)) document.title = '職員ポータル';
         if (stage === 'new1') return invitePin(code, info, agree, 'new2', pin, '');
         if (pin !== first) return invitePin(code, info, agree, 'new1', null, '1回目と2回目が違いました。もう一度決めてください。');
         loading('登録中…');
+        var g0 = pgen;   // 登録の応答を待つ間に画面を離れたら、登録はしてもポータルは開かない（レビュー5回目 R5-04）
         papi({ action: 'invite_redeem', code: code, newPin: pin, agree: agree }).then(function (r) {
           if (!r.ok) {
             if (r.error === 'bad_new_pin' || r.error === 'weak_pin') return invitePin(code, info, agree, 'new1', null, r.message);
@@ -894,6 +896,8 @@ if (/\/slip\//.test(location.pathname)) document.title = '職員ポータル';
           // 打刻専用の画面：打刻する人は打刻の画面へ。打刻しない人には職員ポータルのURLを案内する（ここでは開かない）
           var go = function () {
             if (!PORTAL_MODE) return r.punch ? loadStatus() : portalElsewhere('登録しました');
+            // 待っている間に画面を離れた・いまも非表示 → PINは覚えず、PINの画面から（登録は済んでいる）
+            if (g0 !== pgen || document.visibilityState === 'hidden') return portalPin('登録しました。続けるときはPINを入れてください。');
             ppin = pin; lastAct = Date.now(); portalHome();
           };
           if (r.consent === false) return notice('登録しました', r.consentMessage, go);   // 同意を記録できなかったことを伝える（R3-06）
@@ -904,11 +908,12 @@ if (/\/slip\//.test(location.pathname)) document.title = '職員ポータル';
   }
 
   // 画面に戻ってきたとき（別アプリから戻る等）は状態を取り直す。離れたとき（非表示）はポータルを閉じる（UI01）
+  // 画面の世代（pgen）は、ポータルを開いていない（登録の途中など）ときも進める（レビュー5回目 R5-04）
   document.addEventListener('visibilitychange', function () {
-    if (document.visibilityState === 'hidden') { lockPortal(''); return; }
+    if (document.visibilityState === 'hidden') { pgen++; lockPortal(''); return; }
     if (document.visibilityState === 'visible' && store.token && status && document.getElementById('now')) loadStatus();
   });
-  window.addEventListener('pagehide', function () { lockPortal(''); });
+  window.addEventListener('pagehide', function () { pgen++; lockPortal(''); });
   // 5分さわらなければポータルを閉じる（打刻の画面には関係しない）
   ['pointerdown', 'keydown', 'touchstart', 'scroll'].forEach(function (ev) {
     document.addEventListener(ev, function () { lastAct = Date.now(); }, { capture: true, passive: true });
